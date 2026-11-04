@@ -8,7 +8,7 @@ const assert = require('assert');
 const ctx = { console, Math };
 ctx.window = ctx;
 vm.createContext(ctx);
-for (const f of ['js/config.js', 'js/data/counties.js', 'js/data/names.js', 'js/match/engine.js', 'js/career/squads.js', 'js/career/season.js', 'js/career/career.js']) {
+for (const f of ['js/config.js', 'js/data/counties.js', 'js/data/names.js', 'js/match/engine.js', 'js/career/squads.js', 'js/career/season.js', 'js/career/market.js', 'js/career/career.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f });
 }
 const CC = ctx.CC;
@@ -211,7 +211,82 @@ CC.Career.startNextSeason();
 assert.strictEqual(CC.Career.state.season, 2028, 'next season');
 assert.strictEqual(JSON.stringify(CC.Career.state.schedule.divisions), JSON.stringify(nextDivs), 'new season uses the new divisions');
 assert.strictEqual(CC.Career.state.history.length, 1, 'season recorded in history');
+// --- Squad rules -------------------------------------------------------------
+
+const st = CC.Career.state;
+const M = CC.Market, R = CC.Squads.RULES;
+const myClub = CC.Career.club();
+assert(CC.Career.transferWindow().open, 'window open pre-season');
+// Overseas limits.
+const fa = st.freeAgents;
+assert(fa.length >= 30 && fa.some(p => p.overseas), 'free agent pool');
+myClub.budget = 99999;
+while (myClub.players.filter(p => p.overseas).length < R.maxOverseasSquad) {
+  assert.strictEqual(CC.Career.sign(fa.find(p => p.overseas).id), null, 'sign overseas player');
+}
+assert(/OVERSEAS/.test(M.signProblem(st, fa.find(p => p.overseas))), 'overseas squad limit');
+myClub.selection = null;
+const xi = CC.Career.currentXI();
+assert(xi.filter(p => p.overseas).length <= R.maxOverseasXI, 'auto XI overseas limit');
+const outsider = myClub.players.find(p => p.overseas && xi.indexOf(p) < 0);
+const firstNonOverseas = xi.find(p => !p.overseas);
+assert.strictEqual(CC.Career.toggleXI(firstNonOverseas.id), null, 'leave a player out');
+if (outsider && xi.filter(p => p.overseas).length === R.maxOverseasXI) {
+  assert(/OVERSEAS/.test(CC.Career.toggleXI(outsider.id)), 'overseas XI limit when picking');
+}
+assert.strictEqual(M.chosenXI(st), null, '10 players is not an XI');
+assert.strictEqual(CC.Career.team(st.countyId).players.length, 11, 'auto-pick covers an incomplete XI');
+CC.Career.autoXI();
+// Squad size limits.
+while (myClub.players.length < R.squadMax) assert.strictEqual(CC.Career.sign(fa.find(p => !p.overseas).id), null, 'sign');
+assert(/FULL/.test(M.signProblem(st, fa.find(p => !p.overseas))), 'squad maximum');
+const before = M.wageBill(myClub);
+const gone = myClub.players[myClub.players.length - 1];
+assert.strictEqual(CC.Career.release(gone.id), null, 'release');
+assert.strictEqual(M.wageBill(myClub), before, 'released wages still count this season');
+while (myClub.players.length > R.squadMin) CC.Career.release(myClub.players[myClub.players.length - 1].id);
+assert(/BELOW/.test(CC.Career.release(myClub.players[0].id)), 'squad minimum');
+// Contracts.
+const long = myClub.players.find(p => p.contract > 1);
+if (long) assert(/LEFT/.test(CC.Career.renew(long.id)), 'renew only in the last year');
+const last = myClub.players.find(p => p.contract === 1);
+if (last) { assert.strictEqual(CC.Career.renew(last.id), null, 'renew'); assert(last.contract > 1, 'renewed'); }
+// Windows close mid-season.
+const sched2 = st.schedule;
+const savedNext = sched2.next;
+sched2.next = sched2.events.findIndex(e => e.day > 151 && e.day < 182);
+assert(!CC.Career.transferWindow().open, 'window closed in June');
+assert(/WINDOW/.test(M.signProblem(st, fa[0])), 'no signings while closed');
+sched2.next = savedNext;
+
 console.log('\nseason: champions', summary.champions, 'promoted', summary.promoted.join(' '), 'relegated',
   summary.relegated.join(' '), 'T20', summary.t20, '50 cup', summary.od, '(' + seasonMs + ' ms)');
+
+// --- Close seasons ------------------------------------------------------------
+
+const ages = {};
+CC.counties.forEach(c => CC.Career.club(c.id).players.forEach(p => { ages[p.id] = p.age; }));
+for (let y = 0; y < 2; y++) {
+  while (!CC.Career.seasonOver()) CC.Career.playNext(null);
+  CC.Career.startNextSeason();
+  const seen = {};
+  CC.counties.forEach(c => {
+    const club = CC.Career.club(c.id);
+    assert(club.players.length >= R.squadMin && club.players.length <= R.squadMax, 'squad size after close season: ' + club.players.length);
+    assert(club.players.filter(p => p.overseas).length <= R.maxOverseasSquad, 'overseas registrations');
+    if (c.id !== st.countyId) assert(M.wageBill(club) <= club.budget, 'computer clubs within budget');
+    assert.strictEqual(club.deadWages, 0, 'released wages cleared');
+    club.players.forEach(p => {
+      assert(!seen[p.id], 'a player is at one county only'); seen[p.id] = true;
+      assert(p.contract >= 1, 'everyone has a contract');
+      assert(p.age >= 18 && p.age <= 38, 'ages');
+      if (ages[p.id] !== undefined && y === 0) assert.strictEqual(p.age, ages[p.id] + 1, 'players age a year');
+    });
+    assert.strictEqual(CC.Squads.pickXI(club.players).length, 11, 'can still pick an XI');
+  });
+  st.freeAgents.forEach(p => assert(!seen[p.id], 'free agents are not at a county'));
+  assert(st.news && st.news.youth.length <= 2, 'close season news');
+}
+console.log('two more seasons: my county news', JSON.stringify(st.news));
 
 console.log('\nall checks passed');

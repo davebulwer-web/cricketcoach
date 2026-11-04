@@ -7,7 +7,9 @@
   // Step 4 (squad management) builds on these.
   const RULES = {
     squadMax: 24,          // registered players per county
+    squadMin: 16,          // you can't release players below this
     maxOverseasXI: 2,      // overseas players allowed in a playing XI
+    maxOverseasSquad: 3,   // overseas players a county may have registered at once
   };
 
   // Shape of a generated squad (22 players).
@@ -40,6 +42,7 @@
   }
 
   // Make one player. `used` stops a squad having two players with the same name.
+  // opts: { id, role, style, strength, nation (overseas only), age (optional) }
   function makePlayer(rng, opts, used) {
     const overseas = !!opts.nation;
     const pool = overseas ? CC.names.overseas[opts.nation] : CC.names.home;
@@ -49,7 +52,7 @@
     } while (used[name]);
     used[name] = true;
 
-    const age = overseas ? randInt(rng, 24, 33) : randInt(rng, 18, 36);
+    const age = opts.age || (overseas ? randInt(rng, 24, 33) : randInt(rng, 18, 36));
     const level = 56 + opts.strength * 0.9 + gauss(rng) * 7 + ageAdjust(age) + (overseas ? 11 : 0);
     const p = {
       id: opts.id, name, age, role: opts.role, style: opts.style,
@@ -129,10 +132,19 @@
     // Fill any gaps (e.g. a thin squad) with the best remaining players.
     best(() => true, p => Math.max(p.bat, p.bowl), 11 - chosen.length);
 
-    // Batting order: specialists by batting, then keeper and all-rounders, then bowlers.
-    const order = { BAT: 0, WK: 1, ALL: 1, BOWL: 2 };
-    return chosen.sort((a, b) => order[a.role] - order[b.role] || b.bat - a.bat);
+    return battingOrder(chosen);
   }
 
-  CC.Squads = { RULES, generateSquad, pickXI, sortSquad, wageFor };
+  // Batting order: specialists by batting, then keeper and all-rounders, then bowlers.
+  function battingOrder(players) {
+    const order = { BAT: 0, WK: 1, ALL: 1, BOWL: 2 };
+    return players.slice().sort((a, b) => order[a.role] - order[b.role] || b.bat - a.bat);
+  }
+
+  // A random role and bowling style, in roughly the mix of a real squad.
+  function randomRole(rng) {
+    return choose(rng, TEMPLATE);
+  }
+
+  CC.Squads = { RULES, TEMPLATE, generateSquad, makePlayer, pickXI, battingOrder, sortSquad, wageFor, randomRole, randInt, choose, clamp };
 })(typeof window !== 'undefined' ? window : globalThis);

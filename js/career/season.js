@@ -88,7 +88,7 @@
     const events = [];
     let day = 93; // 3 April
     const add = (comp, stage, fixtures, label, gap) => {
-      events.push({ comp, stage, fixtures, label, date: dateText(day), done: false });
+      events.push({ comp, stage, fixtures, label, day, date: dateText(day), done: false });
       day += gap;
     };
     const ccRound = (i) => add('CC', 'league', cc[i], 'ROUND ' + (i + 1), 7);
@@ -289,7 +289,7 @@
 
   CC.Season = {
     COMPS, POINTS, BAT_BONUS, BOWL_BONUS, PROMOTED,
-    create, table, nextEvent, myFixture, makeMatch, resultOf, playEvent, isOver,
+    create, dateText, table, nextEvent, myFixture, makeMatch, resultOf, playEvent, isOver,
     summary, nextDivisions, standing, bonus, roundRobin,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

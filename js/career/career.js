@@ -4,7 +4,7 @@
 (function (root) {
   const CC = root.CC = root.CC || {};
   const KEY = 'cricketcoach.career';
-  const VERSION = 2;
+  const VERSION = 3;
   const FIRST_SEASON = 2027;
 
   function county(id) { return CC.counties.find(c => c.id === id); }
@@ -20,18 +20,22 @@
     CC.counties.forEach(c => {
       const players = CC.Squads.generateSquad(c, rng, nextId);
       const wages = players.reduce((a, p) => a + p.wage, 0);
-      // A little headroom over the current wage bill, for signings later.
-      clubs[c.id] = { id: c.id, players, budget: Math.ceil(wages * 1.08 / 10) * 10 };
+      // Some headroom over the current wage bill, for signings.
+      clubs[c.id] = { id: c.id, players, budget: Math.ceil(wages * 1.15 / 10) * 10, selection: null, deadWages: 0 };
     });
     const divisions = {
       1: CC.counties.filter(c => c.div === 1).map(c => c.id),
       2: CC.counties.filter(c => c.div === 2).map(c => c.id),
     };
-    return {
+    const state = {
       version: VERSION, seed, season: FIRST_SEASON, countyId: null, clubs, nextPlayerId: next,
       schedule: CC.Season.create(FIRST_SEASON, divisions),
-      history: [],   // one entry per finished season
+      history: [],     // one entry per finished season
+      freeAgents: [],  // players without a county, who can be signed
+      news: null,      // what happened at your county in the last close season
     };
+    CC.Market.topUpFreeAgents(state, rng);
+    return state;
   }
 
   const Career = {
@@ -65,17 +69,28 @@
         mine: CC.Season.standing(sched, this.state.countyId),
       });
       this.state.season += 1;
+      this.state.news = CC.Market.closeSeason(this.state);
       this.state.schedule = CC.Season.create(this.state.season, CC.Season.nextDivisions(sched));
       this.save();
     },
+
+    // --- Squad management (rules in js/career/market.js) --------------------
+    transferWindow() { return CC.Market.windowState(this.state); },
+    sign(pid) { const e = CC.Market.sign(this.state, pid); if (!e) this.save(); return e; },
+    release(pid) { const e = CC.Market.release(this.state, pid); if (!e) this.save(); return e; },
+    renew(pid) { const e = CC.Market.renew(this.state, pid); if (!e) this.save(); return e; },
+    toggleXI(pid) { const e = CC.Market.toggleXI(this.state, pid); this.save(); return e; },
+    autoXI() { this.club().selection = null; this.save(); },
+    currentXI() { return CC.Market.currentXI(this.state); },
     myCounty() { return county(this.state.countyId); },
-    wageBill(id) { return this.club(id).players.reduce((a, p) => a + p.wage, 0); },
+    wageBill(id) { return CC.Market.wageBill(this.club(id)); },
     overseasCount(id) { return this.club(id).players.filter(p => p.overseas).length; },
 
     // The side a county puts out for a match, in the shape the match engine expects.
     team(id) {
       const c = county(id);
-      return { id, name: c.name, short: c.short, colour: c.colour, players: CC.Squads.pickXI(this.club(id).players) };
+      const players = id === this.state.countyId ? this.currentXI() : CC.Squads.pickXI(this.club(id).players);
+      return { id, name: c.name, short: c.short, colour: c.colour, players };
     },
 
     hasSave() {
