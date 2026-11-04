@@ -7,7 +7,7 @@
     enter() {
       this.buttons = [
         CC.ui.button(20, 150, 130, 'SQUAD', 's', () => CC.engine.go('squad', {})),
-        CC.ui.button(170, 150, 130, 'FRIENDLY MATCH', 'Enter', () => CC.game.friendly()),
+        CC.ui.button(170, 150, 130, 'FRIENDLY MATCH', 'Enter', () => CC.engine.go('format', { mode: 'career' })),
         CC.ui.button(170, 238, 130, 'SAVE AND EXIT', 'Escape', () => { CC.Career.save(); CC.engine.go('title'); }),
       ];
     },

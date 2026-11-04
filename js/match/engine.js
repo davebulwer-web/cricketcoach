@@ -1,21 +1,42 @@
-// Ball-by-ball limited-overs match simulation.
+// Ball-by-ball match simulation for three formats:
+//   T20   20 overs a side, max 4 overs per bowler
+//   OD50  50 overs a side, max 10 overs per bowler
+//   FC    four-day first-class match: two innings each, 96 overs a day,
+//         declarations, the follow-on, and a draw if time runs out
 //
 // Pure game logic with no drawing, so it can be tested on its own:
-//   const m = CC.Match.create({ home, away, overs, humanSide: 0 });
+//   const m = CC.Match.create({ home, away, format: 'FC', humanSide: 0 });
 //   m.doToss(); m.chooseToss(true /* bat first */);
-//   while (!m.result) { if (m.needsBowler()) m.setBowler(i); m.bowlBall(); }
+//   while (!m.result) {
+//     if (m.pendingFollowOn) m.chooseFollowOn(true);
+//     if (m.needsBowler()) m.setBowler(i);
+//     m.bowlBall();
+//   }
 //
 // The human captains one side (`humanSide`, an index into [home, away]).
-// The computer makes the same choices for the other side.
+// The computer makes the same choices for the other side. m.simulate()
+// lets the computer play both sides for a while ("sim to end of day").
 (function (root) {
   const CC = root.CC = root.CC || {};
 
   const FIELDS = ['ATTACK', 'NORMAL', 'DEFEND'];
   const AGGRESSION = ['ATTACK', 'NORMAL', 'DEFEND'];
 
-  // Base chance of each outcome on a single delivery, before modifiers.
-  // Tuned so a 20-over innings averages roughly 150 runs for 6-7 wickets.
-  const BASE = { dot: 0.35, 1: 0.35, 2: 0.08, 3: 0.012, 4: 0.115, 6: 0.04, W: 0.04, wide: 0.03, nb: 0.006 };
+  // Base chance of each outcome on a single delivery, before modifiers, per format.
+  //   T20:  a 20-over innings averages roughly 155 for 6
+  //   OD50: a 50-over innings averages roughly 265 for 8
+  //   FC:   about 3.2 runs an over and an all-out total near 300
+  const BASE = {
+    T20:  { dot: 0.35, 1: 0.35, 2: 0.08, 3: 0.012, 4: 0.115, 6: 0.04, W: 0.04, wide: 0.03, nb: 0.006 },
+    OD50: { dot: 0.44, 1: 0.34, 2: 0.075, 3: 0.012, 4: 0.085, 6: 0.022, W: 0.022, wide: 0.022, nb: 0.004 },
+    FC:   { dot: 0.66, 1: 0.2, 2: 0.05, 3: 0.012, 4: 0.062, 6: 0.004, W: 0.0115, wide: 0.006, nb: 0.006 },
+  };
+
+  const FORMATS = {
+    T20:  { name: 'T20', overs: 20, limited: true },
+    OD50: { name: '50 OVER', overs: 50, limited: true },
+    FC:   { name: 'FOUR-DAY', limited: false, days: 4, oversPerDay: 96, sessionsPerDay: 3, followOn: 150 },
+  };
 
   // Multipliers on the base chances for each captain choice.
   const AGG_MOD = {
@@ -51,15 +72,36 @@
 
   function create(opts) {
     const teams = [opts.home, opts.away];
-    const overs = opts.overs || 20;
+    const format = FORMATS[opts.format || 'T20'];
+    if (!format) throw new Error('Unknown format ' + opts.format);
+    const limited = format.limited;
+    const overs = limited ? opts.overs || format.overs : null;
     const bpo = opts.ballsPerOver || 6;
     const humanSide = opts.humanSide === undefined ? 0 : opts.humanSide;
     const rng = makeRng(opts.seed);
-    const maxOversPerBowler = Math.ceil(overs / 5);
+    const maxOversPerBowler = limited ? Math.ceil(overs / 5) : Infinity;
+    const base = BASE[opts.format || 'T20'];
+    const days = format.days || 0;
+    const ballsPerDay = (format.oversPerDay || 0) * bpo;
+    // FC: English weather. Some days lose overs to rain; the match ends when
+    // all the remaining overs have been bowled.
+    const rainOvers = [];
+    for (let d = 0; d < days; d++) {
+      const r = rng();
+      rainOvers.push(opts.noRain ? 0 : r < 0.18 ? 10 + Math.floor(rng() * 40) : r < 0.24 && d > 0 ? 96 : 0);
+    }
+    const dayBalls = rainOvers.map(lost => ballsPerDay - lost * bpo);
+    const matchBalls = dayBalls.reduce((a, b) => a + b, 0);   // FC: when time runs out
 
     const m = {
-      teams, overs, ballsPerOver: bpo, humanSide, maxOversPerBowler,
+      teams, format: opts.format || 'T20', formatName: format.name, limited,
+      overs, ballsPerOver: bpo, humanSide, maxOversPerBowler, days,
       tossWinner: null,
+      rainOvers,           // FC: overs lost to rain on each day
+      totalBalls: 0,       // legal balls bowled in the whole match (FC uses it for the clock)
+      pendingFollowOn: false, // FC: the side that batted first must decide on the follow-on
+      followOn: false,     // FC: the follow-on was enforced
+      autopilot: false,    // the computer is making the human's choices too (m.simulate)
       innings: [],
       cur: -1,             // index of the current innings
       field: 'NORMAL',     // fielding side's setting
@@ -83,6 +125,9 @@
         overRuns: 0, overBalls: 0,
         target: null,
         done: false,
+        declared: false,
+        overBowlers: [],   // who bowled each completed over (for tiredness in FC)
+        at110: null,       // FC: score after 110 overs, used for bonus points
       };
     }
 
@@ -101,10 +146,17 @@
       return battingSide;
     };
 
+    // Total runs a side has scored across its innings so far.
+    function totalFor(side) {
+      return m.innings.filter(i => i.battingSide === side).reduce((a, i) => a + i.runs, 0);
+    }
+    m.totalFor = totalFor;
+
     function startInnings(battingSide) {
       const inn = newInnings(battingSide);
       inn.batters[0].batted = inn.batters[1].batted = true;
-      if (m.innings.length === 1) inn.target = m.innings[0].runs + 1;
+      const lastInnings = limited ? m.innings.length === 1 : m.innings.length === 3;
+      if (lastInnings) inn.target = totalFor(1 - battingSide) - totalFor(battingSide) + 1;
       m.innings.push(inn);
       m.cur = m.innings.length - 1;
       m.field = 'NORMAL';
@@ -126,7 +178,34 @@
       inn = inn || m.current();
       return inn.balls ? inn.runs * bpo / inn.balls : 0;
     };
-    m.ballsLeft = function () { return overs * bpo - m.current().balls; };
+    // Balls the batting side has left: in the innings (limited overs) or in the match (FC).
+    m.ballsLeft = function () { return limited ? overs * bpo - m.current().balls : Math.max(0, matchBalls - m.totalBalls); };
+    m.isHuman = function (side) { return side === humanSide && !m.autopilot; };
+
+    // FC: the day (1-4) and session (1-3) of play.
+    m.clock = function () {
+      if (limited) return null;
+      let b = Math.min(m.totalBalls, Math.max(0, matchBalls - 1)), day = 0;
+      while (day < days - 1 && b >= dayBalls[day]) { b -= dayBalls[day]; day++; }
+      const perSession = dayBalls[day] / format.sessionsPerDay;
+      const session = perSession ? Math.min(format.sessionsPerDay, Math.floor(b / perSession) + 1) : 1;
+      return {
+        day: day + 1, session, rain: rainOvers[day],
+        oversLeftToday: Math.ceil((dayBalls[day] - b) / bpo),
+        ballsLeftInSession: Math.ceil(perSession * session) - b,
+      };
+    };
+
+    // FC: how far the batting side is ahead (+) or behind (-) on runs.
+    m.lead = function () {
+      const inn = m.current();
+      return totalFor(inn.battingSide) - totalFor(inn.bowlingSide);
+    };
+
+    // FC: may the batting side declare now? (Not in the fourth innings.)
+    m.canDeclare = function () {
+      return !limited && !m.result && !m.pendingFollowOn && m.cur >= 0 && m.cur < 3 && !m.current().done;
+    };
     m.requiredRate = function () {
       const inn = m.current();
       if (!inn.target) return null;
@@ -160,7 +239,49 @@
     m.setField = function (f) { if (FIELDS.indexOf(f) >= 0) m.field = f; };
     m.setAggression = function (a) { if (AGGRESSION.indexOf(a) >= 0) m.aggression = a; };
 
+    // FC: close the current innings.
+    m.declare = function () {
+      if (!m.canDeclare()) throw new Error('Cannot declare now');
+      const inn = m.current();
+      inn.declared = true;
+      endInnings(inn);
+    };
+
+    // FC: the side that batted first decides whether to make the other side follow on.
+    m.chooseFollowOn = function (enforce) {
+      if (!m.pendingFollowOn) throw new Error('No follow-on to decide');
+      m.pendingFollowOn = false;
+      m.followOn = !!enforce;
+      startInnings(enforce ? m.innings[1].battingSide : m.innings[0].battingSide);
+    };
+
+    // Let the computer play both sides until stop() is true (checked before
+    // each ball) or the match ends. Returns the events played. The computer
+    // only declares the human's innings when opts.declare is true.
+    m.simulate = function (stop, opts) {
+      const was = m.autopilot;
+      m.autopilot = true;
+      m.autoDeclare = !opts || opts.declare !== false;
+      const played = [];
+      try {
+        while (!m.result) {
+          if (stop && stop(m)) break;
+          if (m.pendingFollowOn) cpuFollowOn();
+          played.push(m.bowlBall());
+        }
+      } finally {
+        m.autopilot = was;
+      }
+      return played;
+    };
+
     // --- Computer captain -------------------------------------------------
+
+    // FC: overs a bowler has bowled out of the last 16, a measure of tiredness.
+    function recentOvers(inn, i) {
+      return inn.overBowlers.slice(-16).filter(b => b === i).length;
+    }
+    m.recentOvers = function (i) { return recentOvers(m.current(), i); };
 
     function cpuPickBowler() {
       const inn = m.current();
@@ -174,13 +295,65 @@
         const used = inn.bowlers[i].balls / bpo;
         let score = p.bowl + rng() * 15;
         if (!p.style) score -= 40;
-        if (oversDone < overs - 4 && used >= maxOversPerBowler - 1) score -= 15; // save a death over
+        if (limited) {
+          if (oversDone < overs - 4 && used >= maxOversPerBowler - 1) score -= 15; // save a death over
+        } else {
+          score -= recentOvers(inn, i) * 3;                          // rest tired bowlers
+          if (p.style === 'SPIN' && inn.balls < 20 * bpo) score -= 10; // seam with the new ball
+        }
         if (score > bestScore) { bestScore = score; best = i; }
       });
       return best;
     }
 
+    // FC: should the batting side declare? Checked at the end of each over.
+    function cpuShouldDeclare() {
+      const inn = m.current();
+      const lead = m.lead();
+      const left = m.ballsLeft() / bpo;            // overs left in the match
+      if (m.cur === 0) return inn.runs >= 550 || (inn.runs >= 450 && left < 230);
+      if (m.cur === 1) return lead >= 200 && left < 200;
+      if (m.cur === 2) {
+        // Set a target: enough runs to be safe, enough time to bowl them out.
+        if (left < 35 || lead <= 0) return false;
+        return lead >= left * 3.8 || (lead >= left * 3.2 && left <= 80) || lead >= 500;
+      }
+      return false;
+    }
+
+    function cpuFollowOn() {
+      // Enforce unless the bowlers have had a very long first innings.
+      const second = m.innings[1];
+      m.chooseFollowOn(second.balls < 110 * bpo || m.ballsLeft() > 150 * bpo);
+    }
+
+    function cpuFieldFC() {
+      const inn = m.current();
+      const over = Math.floor(inn.balls / bpo);
+      if (m.cur === 3) {
+        const need = inn.target - inn.runs, left = m.ballsLeft();
+        if (need > left * 0.75) return 'ATTACK';   // they can't win: go for wickets
+        return need < left * 0.4 ? 'DEFEND' : 'NORMAL';
+      }
+      if (over < 15 || inn.wkts >= 7) return 'ATTACK';
+      return 'NORMAL';
+    }
+
+    function cpuAggressionFC() {
+      const inn = m.current();
+      const left = m.ballsLeft();
+      if (m.cur === 3) {
+        const need = inn.target - inn.runs;
+        if (need > left * 0.7 || (inn.wkts >= 6 && need > left * 0.5)) return 'DEFEND'; // bat for the draw
+        return need > left * 0.55 ? 'ATTACK' : 'NORMAL';
+      }
+      if (m.cur === 2 && m.lead() > 150 && left < 160 * bpo) return 'ATTACK';   // quick runs before declaring
+      if (m.lead() < 0 && left < 60 * bpo) return 'DEFEND';                     // saving the game
+      return 'NORMAL';
+    }
+
     function cpuField() {
+      if (!limited) return cpuFieldFC();
       const inn = m.current();
       const over = Math.floor(inn.balls / bpo);
       if (inn.target) {
@@ -194,6 +367,7 @@
     }
 
     function cpuAggression() {
+      if (!limited) return cpuAggressionFC();
       const inn = m.current();
       const over = Math.floor(inn.balls / bpo);
       const late = over >= overs - 3;
@@ -212,11 +386,15 @@
     // Fill in any choices the computer is responsible for.
     m.autoChoices = function () {
       if (m.result) return;
-      if (!m.humanBowling()) {
+      if (m.pendingFollowOn) {
+        if (m.isHuman(m.innings[0].battingSide)) return;
+        cpuFollowOn();
+      }
+      if (!m.isHuman(m.current().bowlingSide)) {
         if (m.needsBowler()) m.setBowler(cpuPickBowler());
         m.field = cpuField();
       }
-      if (!m.humanBatting()) m.aggression = cpuAggression();
+      if (!m.isHuman(m.current().battingSide)) m.aggression = cpuAggression();
     };
 
     // Used when the human lets the computer choose (e.g. auto-play).
@@ -227,6 +405,7 @@
     m.bowlBall = function () {
       if (m.result) return null;
       m.autoChoices();
+      if (m.pendingFollowOn) throw new Error('Decide the follow-on first');
       const inn = m.current();
       if (inn.bowler === null) throw new Error('Choose a bowler first');
 
@@ -239,9 +418,9 @@
       // Skill difference in roughly -0.9..0.9; positive favours the batter.
       // Batters "play themselves in" over their first few balls.
       const settled = Math.min(1, 0.75 + bs.balls * 0.05);
-      const d = (batter.bat * settled - effectiveBowl(bowler)) / 100;
+      const d = (batter.bat * settled - effectiveBowl(bowler, inn.bowler)) / 100;
 
-      const w = Object.assign({}, BASE);
+      const w = Object.assign({}, base);
       const agg = AGG_MOD[m.aggression], fld = FIELD_MOD[m.field];
       for (const k in w) w[k] *= (agg[k] || 1) * (fld[k] || 1);
       w.W *= Math.exp(-2.2 * d);
@@ -249,6 +428,12 @@
       w[6] *= Math.exp(2.2 * d);
       w.dot *= Math.exp(-0.8 * d);
       w.wide *= bowler.style ? 1 : 2;
+      // FC: the pitch wears as the match goes on, helping the bowlers (spinners most).
+      if (!limited) {
+        const wear = [1, 1.08, 1.25, 1.4][m.cur] * (bowler.style === 'SPIN' && m.cur >= 2 ? 1.1 : 1);
+        w.W *= wear;
+        w.dot *= 1 + (wear - 1) / 2;
+      }
 
       const outcome = pick(rng, w);
       const ev = {
@@ -273,6 +458,7 @@
       } else {
         inn.balls += 1;
         inn.overBalls += 1;
+        m.totalBalls += 1;
         bs.balls += 1;
         bw.balls += 1;
         if (outcome === 'W') {
@@ -294,8 +480,11 @@
       return ev;
     };
 
-    function effectiveBowl(p) {
-      return p.style ? p.bowl : p.bowl * 0.7; // part-timers are easier to score off
+    function effectiveBowl(p, i) {
+      let b = p.style ? p.bowl : p.bowl * 0.7; // part-timers are easier to score off
+      // FC: long spells tire bowlers out (more than 5 of the last 16 overs).
+      if (!limited) b *= 1 - 0.035 * Math.max(0, recentOvers(m.current(), i) - 5);
+      return b;
     }
 
     function dismiss(inn, batter, bowler, bowlTeam) {
@@ -331,42 +520,93 @@
     }
 
     function afterBall(inn, ev) {
+      if (!limited && !inn.at110 && inn.balls === 110 * bpo && m.cur < 2) inn.at110 = { runs: inn.runs, wkts: inn.wkts };
       // Chase complete?
-      if (inn.target && inn.runs >= inn.target) return endInnings(inn);
-      if (inn.wkts >= 10) return endInnings(inn);
+      if (inn.target && inn.runs >= inn.target) return endInnings(inn, ev);
+      if (inn.wkts >= 10) return endInnings(inn, ev);
+      // FC: stumps on the final day.
+      if (!limited && m.totalBalls >= matchBalls) return timeUp(inn, ev);
       if (ev.legal && inn.overBalls === bpo) {
         const bw = inn.bowlers[inn.bowler];
         if (inn.overRuns === 0) bw.maidens += 1;
         ev.endOfOver = true;
+        inn.overBowlers.push(inn.bowler);
         inn.lastOverBowler = inn.bowler;
         inn.bowler = null;
         inn.overRuns = 0;
         inn.overBalls = 0;
         swapStrike(inn);
-        if (inn.balls >= overs * bpo) return endInnings(inn);
+        if (limited && inn.balls >= overs * bpo) return endInnings(inn, ev);
+        if (!limited) {
+          const mayDeclare = !m.isHuman(inn.battingSide) && (inn.battingSide !== humanSide || m.autoDeclare);
+          if (m.canDeclare() && mayDeclare && cpuShouldDeclare()) {
+            inn.declared = true;
+            ev.text += '. ' + teams[inn.battingSide].name + ' DECLARE';
+            return endInnings(inn, ev);
+          }
+        }
       }
     }
 
-    function endInnings(inn) {
+    function finish(winner, by, margin) {
+      const r = m.result = { winner, by, margin };
+      const unit = margin === 1 ? by.replace(/s$/, '') : by;
+      if (by === 'draw') r.text = 'MATCH DRAWN';
+      else if (by === 'tie') r.text = 'MATCH TIED';
+      else if (by === 'innings') r.text = teams[winner].name + ' WON BY AN INNINGS AND ' + margin + ' RUN' + (margin === 1 ? '' : 'S');
+      else r.text = teams[winner].name + ' WON BY ' + margin + ' ' + unit.toUpperCase();
+    }
+
+    // FC: the last over of day four has been bowled.
+    function timeUp(inn, ev) {
       inn.done = true;
       inn.bowler = null;
-      if (m.cur === 0) {
-        startInnings(inn.bowlingSide);
-        m.log[m.log.length - 1].endOfInnings = true;
-        return;
+      if (!inn.at110) inn.at110 = { runs: inn.runs, wkts: inn.wkts };
+      ev.endOfInnings = true;
+      finish(null, 'draw', 0);
+    }
+
+    // `ev` is the ball that ended the innings (none for a declaration made between overs).
+    function endInnings(inn, ev) {
+      inn.done = true;
+      inn.bowler = null;
+      if (ev) ev.endOfInnings = true;
+      if (!inn.at110) inn.at110 = { runs: inn.runs, wkts: inn.wkts };
+      const n = m.innings.length;
+
+      if (limited) {
+        if (n === 1) return startInnings(inn.bowlingSide);
+        const first = m.innings[0];
+        if (inn.runs > first.runs) return finish(inn.battingSide, 'wickets', 10 - inn.wkts);
+        if (inn.runs < first.runs) return finish(first.battingSide, 'runs', first.runs - inn.runs);
+        return finish(null, 'tie', 0);
       }
-      const first = m.innings[0];
-      m.log[m.log.length - 1].endOfInnings = true;
-      if (inn.runs > first.runs) {
-        m.result = { winner: inn.battingSide, by: 'wickets', margin: 10 - inn.wkts };
-      } else if (inn.runs < first.runs) {
-        m.result = { winner: first.battingSide, by: 'runs', margin: first.runs - inn.runs };
-      } else {
-        m.result = { winner: null, by: 'tie', margin: 0 };
+
+      if (m.totalBalls >= matchBalls && !(inn.target && inn.runs >= inn.target)) return finish(null, 'draw', 0);
+      if (n === 1) return startInnings(inn.bowlingSide);
+      if (n === 2) {
+        const lead = m.innings[0].runs - inn.runs;
+        if (lead >= format.followOn) {
+          m.pendingFollowOn = true;
+          if (!m.isHuman(m.innings[0].battingSide)) cpuFollowOn();
+          return;
+        }
+        return startInnings(m.innings[0].battingSide);
       }
-      const r = m.result;
-      r.text = r.winner === null ? 'MATCH TIED'
-        : teams[r.winner].name + ' WON BY ' + r.margin + ' ' + (r.margin === 1 ? r.by.replace(/s$/, '') : r.by).toUpperCase();
+      if (n === 3) {
+        // If the side that has batted twice is still behind, they lose by an innings.
+        const twice = inn.battingSide, other = 1 - twice;
+        const behind = totalFor(other) - totalFor(twice);
+        if (behind > 0 && !inn.declared) return finish(other, 'innings', behind);
+        return startInnings(other);
+      }
+      // Fourth innings.
+      if (inn.runs >= inn.target) return finish(inn.battingSide, 'wickets', 10 - inn.wkts);
+      if (inn.wkts >= 10) {
+        if (inn.runs === inn.target - 1) return finish(null, 'tie', 0);
+        return finish(inn.bowlingSide, 'runs', inn.target - 1 - inn.runs);
+      }
+      return finish(null, 'draw', 0);
     }
 
     function runText(r, batter) {
@@ -409,5 +649,5 @@
     }
   }
 
-  CC.Match = { create, howOut, makeRng, FIELDS, AGGRESSION };
+  CC.Match = { create, howOut, makeRng, FIELDS, AGGRESSION, FORMATS };
 })(typeof window !== 'undefined' ? window : globalThis);
