@@ -28,13 +28,15 @@ In a match you captain Ashby Vale against the computer:
 | `js/match/engine.js` | Ball-by-ball match simulation and the computer captain (no drawing) |
 | `tests/sim.test.js` | Simulates thousands of matches and checks the scoring adds up |
 | `js/screens/` | Title, team sheet, match and scorecard screens |
-| `assets/` | Replaceable placeholder art (from step 3) |
+| `js/sprites.js` | Loads the art and draws sprites, tinting team colours |
+| `assets/` | Replaceable placeholder art. See `assets/README.md` for sizes and layouts |
+| `tools/make-placeholder-art.js` | Regenerates the placeholder PNGs |
 
 ## Roadmap
 
 1. Repo and game skeleton (done)
 2. Ball-by-ball match engine with captain choices: bowler, field setting, batting aggression (done)
-3. Match screens and replaceable placeholder sprite sheets
+3. Match screens and replaceable placeholder sprite sheets (done)
 4. Play-test, tune scoring and publish on GitHub Pages
 
 ## Tests

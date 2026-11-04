@@ -29,6 +29,8 @@
       ctx.fillRect(140, 176, 40, 80);
       drawStumps(ctx, 156, 186);
       drawStumps(ctx, 156, 222);
+      CC.sprites.draw(ctx, 'players', 'bat_swing', 36, 180, { tint: CC.teams[0].colour, scale: 3 });
+      CC.sprites.draw(ctx, 'players', 'bowl_run1', 236, 180, { tint: CC.teams[1].colour, scale: 3 });
 
       F.drawText(ctx, CC.config.title, 160, 40, { scale: 3, align: 'center', color: P.yellow, shadow: P.darkRed });
       F.drawText(ctx, 'A RETRO CRICKET CAPTAIN GAME', 160, 80, { align: 'center', color: P.cream });

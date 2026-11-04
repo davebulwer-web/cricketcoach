@@ -11,7 +11,8 @@
   const F = CC.font;
   const ui = CC.ui;
 
-  const BALL_TIME = 0.35;   // seconds for the ball to reach the batter
+  const RUN_TIME = 0.35;    // seconds for the bowler's run-up
+  const BALL_TIME = 0.7;    // seconds until the ball reaches the batter (includes run-up)
   const HIT_TIME = 0.55;    // seconds for the ball to travel in the overview
   const AUTO_PAUSE = 0.35;  // pause between balls in auto mode
 
@@ -204,22 +205,11 @@
     ui.panel(ctx, x, y, w, h, P.grassDark);
     F.drawText(ctx, 'OVERVIEW', x + w / 2, y + 4, { align: 'center', color: P.yellow });
     const cx = x + w / 2, cy = y + 92, r = 66;
-    ctx.fillStyle = P.grass;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    // Pixel-style boundary rope.
-    ctx.fillStyle = P.white;
-    for (let a = 0; a < 360; a += 3) {
-      const rad = a * Math.PI / 180;
-      ctx.fillRect(Math.round(cx + Math.cos(rad) * r), Math.round(cy + Math.sin(rad) * r), 1, 1);
-    }
-    ctx.fillStyle = P.pitch;
-    ctx.fillRect(cx - 2, cy - 12, 4, 24);
+    CC.sprites.draw(ctx, 'ground', null, cx - 66, cy - 66);
 
     const inn = m.current();
     if (inn) {
-      // Fielders.
+      // Fielders in the bowling side's colour.
       ctx.fillStyle = m.bowlingTeam().colour || P.white;
       FIELD_POSITIONS[m.field].forEach(([fx, fy]) => {
         ctx.fillRect(Math.round(cx + fx * r) - 1, Math.round(cy + fy * r) - 1, 3, 3);
@@ -251,44 +241,58 @@
     }
   }
 
+  // Where things stand in the pitch view, relative to the panel's top-left.
+  // These line up with the creases drawn in assets/pitch.png.
+  const PITCH = {
+    keeper:     { x: 70, y: 8 },
+    stumpsTop:  { x: 71, y: 29 },
+    striker:    { x: 62, y: 27 },
+    stumpsBot:  { x: 71, y: 121 },
+    nonStriker: { x: 90, y: 109 },
+    bowlStart:  { x: 72, y: 137 },  // start of the run-up
+    bowlEnd:    { x: 72, y: 117 },  // point of delivery
+    ballFrom:   { x: 80, y: 118 },
+    ballTo:     { x: 78, y: 42 },
+  };
+
   // Close-up of the pitch: batter at the top, bowler running in from below.
   function drawPitchView(ctx, x, y, w, h) {
     ui.panel(ctx, x, y, w, h, P.grass);
-    for (let i = 0; i < h - 2; i += 8) {
-      ctx.fillStyle = (i / 8) % 2 ? P.grass : P.grassLite;
-      ctx.fillRect(x + 1, y + 1 + i, w - 2, Math.min(8, h - 2 - i));
-    }
-    const px = x + w / 2 - 20;
-    const top = y + 18, bottom = y + h - 46;
-    ctx.fillStyle = P.pitch;
-    ctx.fillRect(px, top, 40, bottom - top);
-    ctx.fillStyle = P.white;
-    ctx.fillRect(px - 6, top + 14, 52, 1);
-    ctx.fillRect(px - 6, bottom - 14, 52, 1);
-    // Stumps at both ends.
-    ctx.fillStyle = P.cream;
-    for (let i = 0; i < 3; i++) {
-      ctx.fillRect(px + 16 + i * 3, top + 4, 2, 10);
-      ctx.fillRect(px + 16 + i * 3, bottom - 14, 2, 10);
-    }
+    CC.sprites.draw(ctx, 'pitch', null, x + 1, y + 1);
 
     const inn = m.current();
     if (!inn) return;
     const batTeam = m.battingTeam(), bowlTeam = m.bowlingTeam();
+    const bat = { tint: batTeam.colour }, bowl = { tint: bowlTeam.colour };
+    const t = anim ? anim.t : 0;
+    const ev = anim && anim.ev;
+    const at = (pos, dx, dy) => [x + pos.x + (dx || 0), y + pos.y + (dy || 0)];
+    const draw = (sheet, frame, pos, opts) => CC.sprites.draw(ctx, sheet, frame, pos[0], pos[1], opts);
 
-    // Placeholder figures (replaced by sprites in step 3).
-    drawFigure(ctx, px + 10, top + 4, batTeam.colour);                 // striker
-    drawFigure(ctx, px + 28, bottom - 18, batTeam.colour);             // non-striker
-    const runUp = anim ? Math.min(1, anim.t / BALL_TIME) : 0;
-    drawFigure(ctx, px + 20, bottom + 8 - Math.round(runUp * 10), bowlTeam.colour); // bowler
+    // Far end: keeper, stumps, striker.
+    draw('players', 'keeper', at(PITCH.keeper), bowl);
+    const bowled = ev && ev.wicket && ev.wicket.how === 'bowled' && t >= BALL_TIME;
+    draw('props', bowled ? 'stumps_broken' : 'stumps', at(PITCH.stumpsTop));
+    const swings = ev && t >= BALL_TIME - 0.05 && (ev.runs > 0 || (ev.wicket && ev.wicket.how === 'caught'));
+    draw('players', swings ? 'bat_swing' : 'bat_stance', at(PITCH.striker), bat);
+
+    // Near end: stumps, non-striker, bowler.
+    draw('props', 'stumps', at(PITCH.stumpsBot));
+    draw('players', 'fielder', at(PITCH.nonStriker), bat);
+    let frame = 'bowl_run1', by = PITCH.bowlStart.y;
+    if (anim) {
+      const run = Math.min(1, t / RUN_TIME);
+      by = PITCH.bowlStart.y + (PITCH.bowlEnd.y - PITCH.bowlStart.y) * run;
+      frame = t >= RUN_TIME ? 'bowl_release' : Math.floor(t / 0.08) % 2 ? 'bowl_run2' : 'bowl_run1';
+    }
+    draw('players', frame, [x + PITCH.bowlStart.x, y + by], bowl);
 
     // The delivery travelling down the pitch.
-    if (anim && anim.t < BALL_TIME) {
-      const k = anim.t / BALL_TIME;
-      const bx = px + 20 + (anim.ev.outcome === 'wide' ? 22 * k : 0);
-      const by = bottom - 8 - (bottom - top - 18) * k;
-      ctx.fillStyle = P.red;
-      ctx.fillRect(Math.round(bx), Math.round(by), 2, 2);
+    if (anim && t >= RUN_TIME && t < BALL_TIME) {
+      const k = (t - RUN_TIME) / (BALL_TIME - RUN_TIME);
+      const bx = PITCH.ballFrom.x + (PITCH.ballTo.x - PITCH.ballFrom.x) * k + (ev.outcome === 'wide' ? 24 * k : 0);
+      const bly = PITCH.ballFrom.y + (PITCH.ballTo.y - PITCH.ballFrom.y) * k;
+      CC.sprites.draw(ctx, 'props', 'ball', x + bx - 8, y + bly - 8);
     }
 
     // Bowler and batter figures.
@@ -300,18 +304,6 @@
     const bl = (i, star) => batTeam.players[i].name + (star ? '*' : ' ') + ' ' + inn.batters[i].runs + '(' + inn.batters[i].balls + ')';
     F.drawText(ctx, bl(inn.striker, true), x + 4, y + h - 21, { color: P.white, shadow: P.black });
     F.drawText(ctx, bl(inn.nonStriker, false), x + 4, y + h - 11, { color: P.cream, shadow: P.black });
-  }
-
-  function drawFigure(ctx, x, y, colour) {
-    ctx.fillStyle = P.cream;      // head
-    ctx.fillRect(x + 1, y, 3, 3);
-    ctx.fillStyle = P.white;      // body
-    ctx.fillRect(x, y + 3, 5, 4);
-    ctx.fillStyle = colour;       // cap/trim
-    ctx.fillRect(x + 1, y, 3, 1);
-    ctx.fillStyle = P.white;      // legs
-    ctx.fillRect(x, y + 7, 2, 3);
-    ctx.fillRect(x + 3, y + 7, 2, 3);
   }
 
   // --------------------------------------------------------------- overlays
