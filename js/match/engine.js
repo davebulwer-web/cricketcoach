@@ -409,5 +409,5 @@
     }
   }
 
-  CC.Match = { create, howOut, FIELDS, AGGRESSION };
+  CC.Match = { create, howOut, makeRng, FIELDS, AGGRESSION };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -11,7 +11,14 @@ or open `index.html` in any modern browser. There is no build step and nothing t
 On a phone it works best turned sideways.
 Keyboard: Enter to continue, Escape to go back. Mouse and touch work on every button.
 
-In a match you captain Ashby Vale against the computer:
+From the title screen:
+
+- **New career:** pick one of the 18 first-class counties and manage it. Club names are the real
+  county names, but every player is invented and generated fresh for each new career. The career
+  saves in your browser, so **Continue career** picks up where you left off.
+- **Quick match:** a one-off 20-over match between two random counties.
+
+In a match you captain your side against the computer:
 
 - **Toss:** if you win it, choose to bat or bowl.
 - **Bowling:** pick a bowler before each over (keys 1-9, or C for the computer's pick). Each bowler can bowl at most 4 overs, and never two in a row. Press F to switch the field between Attack, Normal and Defend.
@@ -26,10 +33,13 @@ In a match you captain Ashby Vale against the computer:
 | `js/config.js` | Title, resolution and match settings (20 overs a side by default) |
 | `js/engine.js` | Canvas scaling, main loop, input and the screen manager |
 | `js/ui.js`, `js/font.js`, `js/palette.js` | Buttons and panels, built-in 5x7 pixel font, colour palette |
-| `js/data/teams.js` | The two invented teams and their player ratings |
+| `js/data/counties.js` | The 18 counties: display names, colours, strength, starting division and regional group |
+| `js/data/names.js` | Pools of invented surnames used to generate players |
+| `js/career/squads.js` | Squad generation, county rules (squad size, overseas limit) and picking the best XI |
+| `js/career/career.js` | The career save: every county's squad, your club, saving and loading |
 | `js/match/engine.js` | Ball-by-ball match simulation and the computer captain (no drawing) |
 | `tests/sim.test.js` | Simulates thousands of matches and checks the scoring adds up |
-| `js/screens/` | Title, team sheet, match and scorecard screens |
+| `js/screens/` | Title, county choice, squad, club office, team sheet, match and scorecard screens |
 | `js/sprites.js` | Loads the art and draws sprites, tinting team colours |
 | `assets/` | Replaceable placeholder art. See `assets/README.md` for sizes and layouts |
 | `tools/make-placeholder-art.js` | Regenerates the placeholder PNGs |
@@ -41,9 +51,18 @@ In a match you captain Ashby Vale against the computer:
 3. Match screens and replaceable placeholder sprite sheets (done)
 4. Play-test, tune scoring and publish on GitHub Pages (done)
 
+County management mode:
+
+1. The 18 counties with invented squads, choosing your county, saved careers (done)
+2. 50-over and multi-day match formats
+3. A season with a two-division four-day championship, a T20 competition and a 50-over cup
+4. Squad management: picking the XI, overseas limits, wage budget, contracts and signing windows
+5. Polish: news, end-of-season review, balancing
+
 ## Tests
 
-Run `node tests/sim.test.js` (Node 18 or later). It plays 2000 computer-vs-computer
-matches and checks that runs, wickets, balls and bowling figures all add up, and
+Run `node tests/sim.test.js` (Node 18 or later). It generates all 18 county squads and
+checks they follow the squad rules, then plays 2000 computer-vs-computer matches between
+them and checks that runs, wickets, balls and bowling figures all add up, and
 prints average scores so the balance can be tuned. GitHub Actions runs it on every
 pull request.

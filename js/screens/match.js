@@ -172,7 +172,7 @@
     }
     if (state === 'result') {
       b.push(ui.button(60, 150, 96, 'SCORECARD', 's', () => CC.engine.go('scorecard')));
-      b.push(ui.button(164, 150, 96, 'NEW MATCH', 'Enter', () => CC.engine.go('teamsheet')));
+      b.push(ui.button(164, 150, 96, CC.game.mode === 'career' ? 'CONTINUE' : 'NEW MATCH', 'Enter', () => CC.game.afterMatch()));
       return b;
     }
     // Normal play.
@@ -187,7 +187,7 @@
       b.push(ui.button(114, 224, 92, 'BAT ' + short(m.aggression), 'f', () => m.setAggression(NEXT_SETTING[m.aggression])));
     }
     b.push(ui.button(208, 224, 58, 'CARD', 's', () => { auto = false; CC.engine.go('scorecard'); }));
-    b.push(ui.button(268, 224, 50, 'QUIT', 'Escape', () => { auto = false; CC.engine.go('title'); }));
+    b.push(ui.button(268, 224, 50, 'QUIT', 'Escape', () => { auto = false; CC.game.exit(); }));
     return b;
   }
 
