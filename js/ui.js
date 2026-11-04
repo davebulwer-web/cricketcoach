@@ -4,6 +4,7 @@
   const F = CC.font;
 
   // A button: { x, y, w, h, label, key, action }. `key` is an optional keyboard shortcut.
+  // Optional extras: align: 'left', disabled: true.
   function button(x, y, w, label, key, action) {
     return { x, y, w, h: 13, label, key, action };
   }
@@ -14,10 +15,10 @@
 
   function drawButton(ctx, b, mouse) {
     const over = hit(b, mouse.x, mouse.y);
-    bevel(ctx, b.x, b.y, b.w, b.h, over ? P.red : P.blue);
-    F.drawText(ctx, b.label, b.x + Math.floor(b.w / 2), b.y + 3, {
-      align: 'center', color: over ? P.yellow : P.white,
-    });
+    bevel(ctx, b.x, b.y, b.w, b.h, b.disabled ? P.greyDark : over ? P.red : P.blue);
+    const color = b.disabled ? P.grey : over ? P.yellow : P.white;
+    if (b.align === 'left') F.drawText(ctx, b.label, b.x + 4, b.y + 3, { color });
+    else F.drawText(ctx, b.label, b.x + Math.floor(b.w / 2), b.y + 3, { align: 'center', color });
   }
 
   // Raised box with a light top-left edge and dark bottom-right edge.
