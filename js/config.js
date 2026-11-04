@@ -7,4 +7,5 @@ CC.config = {
   height: 256,
   oversPerInnings: 20,
   ballsPerOver: 6,
+  animSpeed: 1,                  // >1 speeds up ball animations (handy for testing).
 };

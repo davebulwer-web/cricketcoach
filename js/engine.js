@@ -77,14 +77,14 @@
     if (!current) return;
     const p = toNative(e);
     mouse.x = p.x; mouse.y = p.y;
-    const btn = (current.buttons || []).find(b => CC.ui.hit(b, p.x, p.y));
+    const btn = (current.buttons || []).find(b => !b.disabled && CC.ui.hit(b, p.x, p.y));
     if (btn) { btn.action(); return; }
     if (current.onClick) current.onClick(p.x, p.y);
   });
   window.addEventListener('keydown', e => {
     if (!current) return;
     const key = e.key;
-    const btn = (current.buttons || []).find(b => b.key && b.key.toLowerCase() === key.toLowerCase());
+    const btn = (current.buttons || []).find(b => !b.disabled && b.key && b.key.toLowerCase() === key.toLowerCase());
     if (btn) { e.preventDefault(); btn.action(); return; }
     if (current.onKey) current.onKey(key);
   });
