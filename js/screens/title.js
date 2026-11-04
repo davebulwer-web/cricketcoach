@@ -7,8 +7,14 @@
   CC.engine.register('title', {
     enter() {
       t = 0;
+      const cont = CC.ui.button(100, 136, 120, 'CONTINUE CAREER', 'c', () => {
+        if (CC.Career.load()) { CC.game.mode = 'career'; CC.engine.go('office'); }
+      });
+      cont.disabled = !CC.Career.hasSave();
       this.buttons = [
-        CC.ui.button(110, 150, 100, 'PLAY MATCH', 'Enter', () => CC.engine.go('teamsheet')),
+        CC.ui.button(100, 120, 120, 'NEW CAREER', 'Enter', () => { CC.Career.begin(); CC.engine.go('county'); }),
+        cont,
+        CC.ui.button(100, 152, 120, 'QUICK MATCH', 'q', () => CC.game.quickMatch()),
       ];
     },
 
@@ -29,17 +35,15 @@
       ctx.fillRect(140, 176, 40, 80);
       drawStumps(ctx, 156, 186);
       drawStumps(ctx, 156, 222);
-      CC.sprites.draw(ctx, 'players', 'bat_swing', 36, 180, { tint: CC.teams[0].colour, scale: 3 });
-      CC.sprites.draw(ctx, 'players', 'bowl_run1', 236, 180, { tint: CC.teams[1].colour, scale: 3 });
+      CC.sprites.draw(ctx, 'players', 'bat_swing', 36, 180, { tint: CC.counties[13].colour, scale: 3 });
+      CC.sprites.draw(ctx, 'players', 'bowl_run1', 236, 180, { tint: CC.counties[17].colour, scale: 3 });
 
       F.drawText(ctx, CC.config.title, 160, 40, { scale: 3, align: 'center', color: P.yellow, shadow: P.darkRed });
-      F.drawText(ctx, 'A RETRO CRICKET CAPTAIN GAME', 160, 80, { align: 'center', color: P.cream });
-      F.drawText(ctx, CC.config.oversPerInnings + ' OVER LIMITED OVERS MATCH', 160, 100, { align: 'center', color: P.greyLite });
-
+      F.drawText(ctx, 'COUNTY CRICKET MANAGEMENT', 160, 76, { align: 'center', color: P.cream });
       if (Math.floor(t * 2) % 2 === 0) {
-        F.drawText(ctx, 'PRESS ENTER OR TAP PLAY', 160, 130, { align: 'center', color: P.white });
+        F.drawText(ctx, 'CHOOSE AN OPTION', 160, 100, { align: 'center', color: P.white });
       }
-      F.drawText(ctx, 'PROOF OF CONCEPT', 160, 245, { align: 'center', color: P.cream });
+      F.drawText(ctx, 'ALL PLAYERS ARE FICTIONAL', 160, 245, { align: 'center', color: P.cream });
     },
   });
 

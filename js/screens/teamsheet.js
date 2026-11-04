@@ -6,7 +6,7 @@
   CC.engine.register('teamsheet', {
     enter() {
       this.buttons = [
-        CC.ui.button(8, 238, 70, 'BACK', 'Escape', () => CC.engine.go('title')),
+        CC.ui.button(8, 238, 70, 'BACK', 'Escape', () => CC.game.exit()),
         CC.ui.button(222, 238, 90, 'START', 'Enter', () => CC.engine.go('match', { newMatch: true })),
       ];
     },
