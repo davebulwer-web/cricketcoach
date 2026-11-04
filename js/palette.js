@@ -1,0 +1,21 @@
+// A small fixed palette in the spirit of 16-bit home computers.
+CC.pal = {
+  black:     '#000000',
+  white:     '#ffffff',
+  cream:     '#f0e8c8',
+  yellow:    '#f8e040',
+  orange:    '#f09030',
+  red:       '#d02020',
+  darkRed:   '#801010',
+  grassDark: '#106010',
+  grass:     '#209020',
+  grassLite: '#40b040',
+  pitch:     '#c8b070',
+  pitchDark: '#a08850',
+  sky:       '#60a0f0',
+  blue:      '#2040c0',
+  navy:      '#102070',
+  grey:      '#808080',
+  greyLite:  '#c0c0c0',
+  greyDark:  '#404040',
+};
