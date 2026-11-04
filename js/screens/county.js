@@ -7,7 +7,7 @@
     enter() {
       this.buttons = CC.counties.map((c, i) => {
         const col = i % 2, row = Math.floor(i / 2);
-        const label = (c.fullName + '                 ').slice(0, 17) + 'DIV ' + c.div;
+        const label = (c.fullName + '                 ').slice(0, 17) + 'DIV ' + CC.Career.division(c.id);
         const b = CC.ui.button(8 + col * 156, 34 + row * 16, 148, label, null,
           () => CC.engine.go('squad', { clubId: c.id, preview: true }));
         b.align = 'left';
