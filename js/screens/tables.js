@@ -3,7 +3,7 @@
   const P = CC.pal;
   const F = CC.font;
   const PAGES = [
-    ['CC', 1], ['CC', 2], ['T20', 'NORTH'], ['T20', 'SOUTH'], ['OD', 'NORTH'], ['OD', 'SOUTH'], ['KO', null],
+    ['CC', 1], ['CC', 2], ['T20', 'NORTH'], ['T20', 'SOUTH'], ['OD', 'NORTH'], ['OD', 'SOUTH'], ['KO', null], ['LEAD', null],
   ];
   let page = 0;
 
@@ -24,6 +24,7 @@
       ctx.fillRect(0, 0, 320, 256);
       const [comp, group] = PAGES[page];
       if (comp === 'KO') return drawKnockouts(ctx);
+      if (comp === 'LEAD') return drawLeaders(ctx);
       const sched = CC.Career.state.schedule;
       const rows = CC.Season.table(sched, comp, group);
       const mine = CC.Career.state.countyId;
@@ -66,6 +67,35 @@
       F.drawText(ctx, comp === 'CC' ? 'WIN 16, DRAW 8, PLUS BONUS POINTS' : 'WIN 2, TIE 1', 160, 224, { align: 'center', color: P.greyLite });
     },
   });
+
+  // Top run scorers and wicket takers in each competition, across all counties.
+  function drawLeaders(ctx) {
+    const st = CC.Career.state;
+    F.drawText(ctx, 'LEADING PLAYERS ' + st.schedule.year, 160, 6, { align: 'center', color: P.yellow, shadow: P.black });
+    const mine = st.countyId;
+    let y = 22;
+    ['CC', 'T20', 'OD'].forEach(comp => {
+      F.drawText(ctx, CC.Season.COMPS[comp].name, 4, y, { color: P.yellow });
+      F.drawText(ctx, 'RUNS', 154, y, { align: 'right', color: P.cream });
+      F.drawText(ctx, 'WKTS', 316, y, { align: 'right', color: P.cream });
+      y += 10;
+      const l = CC.Season.leaders(st.clubs, comp, 5);
+      for (let i = 0; i < 5; i++) {
+        const r = l.runs[i], w = l.wkts[i];
+        if (r && r.s.runs) {
+          F.drawText(ctx, r.p.name + ' ' + CC.Career.county(r.id).short, 4, y, { color: r.id === mine ? P.yellow : P.white });
+          F.drawText(ctx, String(r.s.runs), 154, y, { align: 'right', color: r.id === mine ? P.yellow : P.white });
+        }
+        if (w && w.s.wkts) {
+          F.drawText(ctx, w.p.name + ' ' + CC.Career.county(w.id).short, 166, y, { color: w.id === mine ? P.yellow : P.white });
+          F.drawText(ctx, String(w.s.wkts), 316, y, { align: 'right', color: w.id === mine ? P.yellow : P.white });
+        }
+        y += 9;
+      }
+      if (!l.runs.length || !l.runs[0].s.runs) F.drawText(ctx, 'NO MATCHES PLAYED YET', 160, y - 36, { align: 'center', color: P.greyLite });
+      y += 8;
+    });
+  }
 
   function drawKnockouts(ctx) {
     const sched = CC.Career.state.schedule;

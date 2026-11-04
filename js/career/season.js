@@ -229,6 +229,33 @@
     return res;
   }
 
+  // Add a finished match to every player's season figures (player.stats[comp]).
+  // Returns the notable performances: hundreds and five-wicket hauls.
+  function recordStats(m, comp) {
+    const feats = [];
+    const blank = () => ({ m: 0, inns: 0, no: 0, runs: 0, hs: 0, balls: 0, wkts: 0, conc: 0, hundreds: 0, fives: 0 });
+    const line = p => { p.stats = p.stats || {}; return (p.stats[comp] = p.stats[comp] || blank()); };
+    m.teams.forEach(t => t.players.forEach(p => { line(p).m++; }));
+    m.innings.forEach(inn => {
+      const bat = m.teams[inn.battingSide], bowl = m.teams[inn.bowlingSide];
+      inn.batters.forEach((b, i) => {
+        if (!b.batted) return;
+        const s = line(bat.players[i]);
+        s.inns++; s.runs += b.runs;
+        if (!b.out) s.no++;
+        if (b.runs > s.hs) s.hs = b.runs;
+        if (b.runs >= 100) { s.hundreds++; feats.push({ name: bat.players[i].name, team: bat.id, text: b.runs + (b.out ? '' : ' NOT OUT') + ' V ' + bowl.name }); }
+      });
+      inn.bowlers.forEach((w, i) => {
+        if (!w.balls && !w.runs) return;
+        const s = line(bowl.players[i]);
+        s.balls += w.balls; s.wkts += w.wkts; s.conc += w.runs;
+        if (w.wkts >= 5) { s.fives++; feats.push({ name: bowl.players[i].name, team: bowl.id, text: w.wkts + ' FOR ' + w.runs + ' V ' + bat.name }); }
+      });
+    });
+    return feats;
+  }
+
   // Simulate one fixture between computer sides.
   function simFixture(season, f, seed) {
     const m = makeMatch(season, f, null, seed);
@@ -239,21 +266,41 @@
     return m;
   }
 
+  // Season leaders across all counties: top `n` run scorers and wicket takers.
+  function leaders(clubs, comp, n) {
+    const all = [];
+    Object.keys(clubs).forEach(id => clubs[id].players.forEach(p => { if (p.stats && p.stats[comp]) all.push({ p, id, s: p.stats[comp] }); }));
+    return {
+      runs: all.slice().sort((a, b) => b.s.runs - a.s.runs).slice(0, n),
+      wkts: all.slice().sort((a, b) => b.s.wkts - a.s.wkts || a.s.conc - b.s.conc).slice(0, n),
+    };
+  }
+
   // Finish the next event: record the player's match (if given) and simulate
   // the rest. `myMatch` is a finished CC.Match for the player's fixture.
   function playEvent(season, countyId, myMatch, baseSeed) {
     const ev = nextEvent(season);
     if (!ev) return null;
     const mine = myFixture(ev, countyId);
+    ev.feats = [];
     ev.fixtures.forEach(f => {
       if (f.result) return;
-      if (f === mine && myMatch) f.result = resultOf(myMatch, f);
-      else simFixture(season, f, (baseSeed || 0) + ++season.matchCount);
+      let m;
+      if (f === mine && myMatch) { m = myMatch; f.result = resultOf(myMatch, f); }
+      else m = simFixture(season, f, (baseSeed || 0) + ++season.matchCount);
+      recordStats(m, f.comp).forEach(x => ev.feats.push(x));
     });
     ev.done = true;
     season.next++;
     return ev;
   }
+
+  // 1ST, 2ND, 3RD, 4TH...
+  function ordinal(n) {
+    if (n % 100 >= 11 && n % 100 <= 13) return n + 'TH';
+    return n + ({ 1: 'ST', 2: 'ND', 3: 'RD' }[n % 10] || 'TH');
+  }
+  CC.ordinal = ordinal;
 
   function isOver(season) { return season.next >= season.events.length; }
 
@@ -290,6 +337,6 @@
   CC.Season = {
     COMPS, POINTS, BAT_BONUS, BOWL_BONUS, PROMOTED,
     create, dateText, table, nextEvent, myFixture, makeMatch, resultOf, playEvent, isOver,
-    summary, nextDivisions, standing, bonus, roundRobin,
+    summary, nextDivisions, standing, bonus, roundRobin, recordStats, leaders,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

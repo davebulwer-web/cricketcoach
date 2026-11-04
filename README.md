@@ -37,6 +37,12 @@ one-day competitions) and your fixture list are a button away. Quitting a compet
 match part-way through lets the computer play out the rest. At the end of the season you
 get a review, then promotion and relegation are applied and the next season begins.
 
+The **News** button in the office lists your results, your players' hundreds and
+five-wicket hauls, qualification for the knockouts, and transfer windows opening and
+closing. Every player's season figures (matches, runs, top score, averages, wickets and
+economy) are kept for each competition: press **Stats** on the squad screen to see them,
+and the last page of the tables shows the leading run scorers and wicket takers.
+
 ### Your squad
 
 Simplified versions of the real county rules:
@@ -94,7 +100,7 @@ In a match you captain your side against the computer:
 | `js/career/career.js` | The career save: every county's squad, your club, the season, saving and loading |
 | `js/match/engine.js` | Ball-by-ball match simulation for T20, 50-over and four-day matches, and the computer captain (no drawing) |
 | `tests/sim.test.js` | Simulates thousands of matches and checks the scoring adds up |
-| `js/screens/` | Title, county choice, squad, transfer market, club office, results, tables, fixtures, season review, close season, format choice, team sheet, match and scorecard screens |
+| `js/screens/` | Title, county choice, squad, transfer market, club office, news, results, tables, fixtures, season review, close season, format choice, team sheet, match and scorecard screens |
 | `js/sprites.js` | Loads the art and draws sprites, tinting team colours |
 | `assets/` | Replaceable placeholder art. See `assets/README.md` for sizes and layouts |
 | `tools/make-placeholder-art.js` | Regenerates the placeholder PNGs |
@@ -112,7 +118,7 @@ County management mode:
 2. 50-over and four-day match formats (done)
 3. A season with a two-division four-day championship, a T20 competition and a 50-over cup (done)
 4. Squad management: picking the XI, overseas limits, wage budget, contracts and signing windows (done)
-5. Polish: news, end-of-season review, balancing
+5. Polish: news, player figures and season leaders, balancing (done)
 
 ## Tests
 
