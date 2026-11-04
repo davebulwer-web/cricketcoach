@@ -1,9 +1,10 @@
-// The saved career: every county's squad plus which county you manage.
+// The saved career: every county's squad, which county you manage, the
+// championship divisions and the current season's fixtures and results.
 // Kept in localStorage so the game carries on where you left off.
 (function (root) {
   const CC = root.CC = root.CC || {};
   const KEY = 'cricketcoach.career';
-  const VERSION = 1;
+  const VERSION = 2;
   const FIRST_SEASON = 2027;
 
   function county(id) { return CC.counties.find(c => c.id === id); }
@@ -22,7 +23,15 @@
       // A little headroom over the current wage bill, for signings later.
       clubs[c.id] = { id: c.id, players, budget: Math.ceil(wages * 1.08 / 10) * 10 };
     });
-    return { version: VERSION, seed, season: FIRST_SEASON, countyId: null, clubs, nextPlayerId: next };
+    const divisions = {
+      1: CC.counties.filter(c => c.div === 1).map(c => c.id),
+      2: CC.counties.filter(c => c.div === 2).map(c => c.id),
+    };
+    return {
+      version: VERSION, seed, season: FIRST_SEASON, countyId: null, clubs, nextPlayerId: next,
+      schedule: CC.Season.create(FIRST_SEASON, divisions),
+      history: [],   // one entry per finished season
+    };
   }
 
   const Career = {
@@ -33,6 +42,32 @@
     takeCharge(countyId) { this.state.countyId = countyId; this.save(); },
 
     club(id) { return this.state.clubs[id || this.state.countyId]; },
+    division(id) { return this.state.schedule.divisions[1].indexOf(id || this.state.countyId) >= 0 ? 1 : 2; },
+
+    // --- The season ---------------------------------------------------------
+    nextEvent() { return CC.Season.nextEvent(this.state.schedule); },
+    myFixture() { return CC.Season.myFixture(this.nextEvent(), this.state.countyId); },
+    seasonOver() { return CC.Season.isOver(this.state.schedule); },
+
+    // Play the next event: `myMatch` is your finished match, or null to simulate it.
+    playNext(myMatch) {
+      const ev = CC.Season.playEvent(this.state.schedule, this.state.countyId, myMatch, this.state.seed);
+      this.save();
+      return ev;
+    },
+
+    // Record the season, apply promotion and relegation, and set up the next one.
+    startNextSeason() {
+      const sched = this.state.schedule;
+      this.state.history.push({
+        year: sched.year,
+        summary: CC.Season.summary(sched),
+        mine: CC.Season.standing(sched, this.state.countyId),
+      });
+      this.state.season += 1;
+      this.state.schedule = CC.Season.create(this.state.season, CC.Season.nextDivisions(sched));
+      this.save();
+    },
     myCounty() { return county(this.state.countyId); },
     wageBill(id) { return this.club(id).players.reduce((a, p) => a + p.wage, 0); },
     overseasCount(id) { return this.club(id).players.filter(p => p.overseas).length; },

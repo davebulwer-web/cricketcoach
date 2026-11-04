@@ -8,7 +8,7 @@ const assert = require('assert');
 const ctx = { console, Math };
 ctx.window = ctx;
 vm.createContext(ctx);
-for (const f of ['js/config.js', 'js/data/counties.js', 'js/data/names.js', 'js/match/engine.js', 'js/career/squads.js', 'js/career/career.js']) {
+for (const f of ['js/config.js', 'js/data/counties.js', 'js/data/names.js', 'js/match/engine.js', 'js/career/squads.js', 'js/career/season.js', 'js/career/career.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', f), 'utf8'), ctx, { filename: f });
 }
 const CC = ctx.CC;
@@ -151,4 +151,67 @@ while (h.current().battingSide !== 0 || h.current().balls < 30) {
 assert(h.canDeclare(), 'can declare while batting');
 h.declare();
 assert(h.innings[h.innings.length - 2].declared, 'declared innings closed');
+// --- A whole season ----------------------------------------------------------
+
+CC.Career.begin(4242);
+CC.Career.takeCharge('KEN');
+const sched = CC.Career.state.schedule;
+const count = {};
+sched.events.forEach(ev => {
+  const seen = {};
+  ev.fixtures.forEach(f => {
+    assert(!seen[f.home] && !seen[f.away] && f.home !== f.away, 'nobody plays twice on one day');
+    seen[f.home] = seen[f.away] = true;
+    [f.home, f.away].forEach(id => { const k = id + ev.comp; count[k] = (count[k] || 0) + 1; });
+  });
+});
+ids.forEach(id => {
+  assert.strictEqual(count[id + 'CC'], 14, 'fourteen championship matches');
+  assert.strictEqual(count[id + 'T20'], 16, 'sixteen T20 group matches');
+  assert.strictEqual(count[id + 'OD'], 8, 'eight 50-over group matches');
+});
+const started = Date.now();
+while (!CC.Career.seasonOver()) CC.Career.playNext(null);
+const seasonMs = Date.now() - started;
+sched.events.forEach(ev => {
+  assert(ev.done && ev.fixtures.length, 'every event played');
+  ev.fixtures.forEach(f => assert(f.result, 'every fixture has a result'));
+  if (ev.stage !== 'league' && ev.stage !== 'group') {
+    ev.fixtures.forEach(f => assert([f.home, f.away].indexOf(f.result.winner) >= 0, 'knockouts have a winner'));
+  }
+});
+const koCount = { T20: [4, 2, 1], OD: [2, 1] };
+Object.keys(koCount).forEach(comp => {
+  const evs = sched.events.filter(e => e.comp === comp && e.stage !== 'group');
+  assert.strictEqual(JSON.stringify(evs.map(e => e.fixtures.length)), JSON.stringify(koCount[comp]), comp + ' knockout shape');
+});
+// Table points add up: every championship match hands out 16 (win) or 16 (two draws) plus bonuses.
+[1, 2].forEach(div => {
+  const t = CC.Season.table(sched, 'CC', div);
+  t.forEach(r => {
+    assert.strictEqual(r.p, 14, 'played 14');
+    assert.strictEqual(r.w + r.d + r.l + r.t, r.p, 'W+D+L+T = P');
+    assert(r.bat <= 5 * 14 && r.bowl <= 3 * 14, 'bonus point limits');
+    assert.strictEqual(r.pts, r.w * 16 + (r.d + r.t) * 8 + r.bat + r.bowl, 'championship points');
+  });
+});
+['NORTH', 'SOUTH'].forEach(g => {
+  const t = CC.Season.table(sched, 'T20', g);
+  assert.strictEqual(t.reduce((a, r) => a + r.w, 0), t.reduce((a, r) => a + r.l, 0), 'T20 wins = losses');
+  t.forEach(r => assert.strictEqual(r.pts, r.w * 2 + r.t, 'T20 points'));
+});
+const summary = CC.Season.summary(sched);
+const nextDivs = CC.Season.nextDivisions(sched);
+assert.strictEqual(nextDivs[1].length, 10, 'ten in Division 1');
+assert.strictEqual(nextDivs[2].length, 8, 'eight in Division 2');
+assert.strictEqual(new Set(nextDivs[1].concat(nextDivs[2])).size, 18, 'every county in one division');
+summary.promoted.forEach(id => assert(nextDivs[1].indexOf(id) >= 0, 'promoted sides go up'));
+summary.relegated.forEach(id => assert(nextDivs[2].indexOf(id) >= 0, 'relegated sides go down'));
+CC.Career.startNextSeason();
+assert.strictEqual(CC.Career.state.season, 2028, 'next season');
+assert.strictEqual(JSON.stringify(CC.Career.state.schedule.divisions), JSON.stringify(nextDivs), 'new season uses the new divisions');
+assert.strictEqual(CC.Career.state.history.length, 1, 'season recorded in history');
+console.log('\nseason: champions', summary.champions, 'promoted', summary.promoted.join(' '), 'relegated',
+  summary.relegated.join(' '), 'T20', summary.t20, '50 cup', summary.od, '(' + seasonMs + ' ms)');
+
 console.log('\nall checks passed');

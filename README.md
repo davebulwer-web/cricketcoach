@@ -18,7 +18,28 @@ From the title screen:
   saves in your browser, so **Continue career** picks up where you left off.
 - **Quick match:** a one-off match between two random counties.
 
-Quick matches and friendlies come in three formats:
+### The season
+
+Each season has three competitions (the names are invented):
+
+- **County Championship:** four-day matches in two divisions (10 and 8 counties), 14 matches
+  each. 16 points for a win, 8 for a draw, plus bonus points in the first 110 overs of each
+  first innings: 1 batting point at 250, 300, 350, 400 and 450 runs, and 1 bowling point at
+  3, 6 and 9 wickets. The top side in Division 1 are champions; two go down and two come up.
+- **Shires T20 Trophy:** North and South groups of nine, home and away (16 matches each).
+  The top four in each group reach the quarter-finals, then Finals Day (semi-finals and final).
+- **Counties 50 Cup:** the same groups, each side playing the others once. The top two in
+  each group reach the semi-finals, then the final.
+
+From the club office you play your next match or simulate it; every other fixture is
+simulated. After each round you see all the results. Tables (with net run rate for the
+one-day competitions) and your fixture list are a button away. Quitting a competition
+match part-way through lets the computer play out the rest. At the end of the season you
+get a review, then promotion and relegation are applied and the next season begins.
+
+### Match formats
+
+Matches come in three formats:
 
 - **T20:** 20 overs a side, at most 4 overs per bowler.
 - **50 overs:** 50 overs a side, at most 10 overs per bowler.
@@ -47,10 +68,11 @@ In a match you captain your side against the computer:
 | `js/data/counties.js` | The 18 counties: display names, colours, strength, starting division and regional group |
 | `js/data/names.js` | Pools of invented surnames used to generate players |
 | `js/career/squads.js` | Squad generation, county rules (squad size, overseas limit) and picking the best XI |
-| `js/career/career.js` | The career save: every county's squad, your club, saving and loading |
+| `js/career/season.js` | Fixtures, results, league tables, bonus points, knockouts, promotion and relegation |
+| `js/career/career.js` | The career save: every county's squad, your club, the season, saving and loading |
 | `js/match/engine.js` | Ball-by-ball match simulation for T20, 50-over and four-day matches, and the computer captain (no drawing) |
 | `tests/sim.test.js` | Simulates thousands of matches and checks the scoring adds up |
-| `js/screens/` | Title, county choice, squad, club office, format choice, team sheet, match and scorecard screens |
+| `js/screens/` | Title, county choice, squad, club office, results, tables, fixtures, season review, format choice, team sheet, match and scorecard screens |
 | `js/sprites.js` | Loads the art and draws sprites, tinting team colours |
 | `assets/` | Replaceable placeholder art. See `assets/README.md` for sizes and layouts |
 | `tools/make-placeholder-art.js` | Regenerates the placeholder PNGs |
@@ -66,7 +88,7 @@ County management mode:
 
 1. The 18 counties with invented squads, choosing your county, saved careers (done)
 2. 50-over and four-day match formats (done)
-3. A season with a two-division four-day championship, a T20 competition and a 50-over cup
+3. A season with a two-division four-day championship, a T20 competition and a 50-over cup (done)
 4. Squad management: picking the XI, overseas limits, wage budget, contracts and signing windows
 5. Polish: news, end-of-season review, balancing
 
@@ -77,5 +99,7 @@ checks they follow the squad rules, then plays 2000 T20, 500 50-over and 250 fou
 computer-vs-computer matches between them. It checks that runs, wickets, balls and bowling
 figures add up, that each format's rules hold (over limits, declarations, follow-on, innings
 wins, draws only when time runs out), and that average scores and the share of draws stay in
-a realistic range. It prints the averages so the balance can be tuned. GitHub Actions runs it on every
+a realistic range. Finally it plays a whole season and checks every county has the right
+number of fixtures, the tables and points add up, the knockouts have winners, and promotion
+and relegation carry into the next season. It prints the averages so the balance can be tuned. GitHub Actions runs it on every
 pull request.

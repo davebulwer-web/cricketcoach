@@ -15,7 +15,10 @@
       ctx.fillStyle = P.grassDark;
       ctx.fillRect(0, 0, 320, 256);
       F.drawText(ctx, 'TEAM SHEETS', 160, 6, { align: 'center', color: P.yellow, scale: 2, shadow: P.black });
-      F.drawText(ctx, CC.Match.FORMATS[CC.game.format].name + ' MATCH', 160, 236, { align: 'center', color: P.cream });
+      const f = CC.game.fixture;
+      const caption = f ? CC.Season.COMPS[f.comp].name + (f.home === CC.game.home.id ? ' (HOME)' : ' (AWAY)')
+        : CC.Match.FORMATS[CC.game.format].name + ' MATCH';
+      F.drawText(ctx, caption, 160, 230, { align: 'center', color: P.cream });
 
       drawTeam(ctx, CC.game.home, 4, 28, 'YOUR TEAM');
       drawTeam(ctx, CC.game.away, 163, 28, 'OPPONENTS');

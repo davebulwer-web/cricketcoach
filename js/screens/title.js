@@ -14,7 +14,7 @@
       this.buttons = [
         CC.ui.button(100, 120, 120, 'NEW CAREER', 'Enter', () => { CC.Career.begin(); CC.engine.go('county'); }),
         cont,
-        CC.ui.button(100, 152, 120, 'QUICK MATCH', 'q', () => CC.engine.go('format', { mode: 'quick' })),
+        CC.ui.button(100, 152, 120, 'QUICK MATCH', 'q', () => CC.engine.go('format')),
       ];
     },
 
