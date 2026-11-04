@@ -21,11 +21,11 @@
   let currentName = '';
   const mouse = { x: -1, y: -1 };
 
-  // Scale the canvas by the largest whole number that fits, so pixels stay square.
-  // On very small screens fall back to a fractional fit.
+  // Scale the canvas by the largest whole number that fits, so pixels stay even.
+  // On phones (less than 2x room) use all the space available instead.
   function resize() {
     const fit = Math.min(window.innerWidth / W, window.innerHeight / H);
-    const scale = fit >= 1 ? Math.floor(fit) : fit;
+    const scale = fit >= 2 ? Math.floor(fit) : fit;
     canvas.style.width = Math.floor(W * scale) + 'px';
     canvas.style.height = Math.floor(H * scale) + 'px';
   }

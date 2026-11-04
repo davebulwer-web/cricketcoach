@@ -35,6 +35,8 @@
   let wait = 0;             // auto-play pause timer
   let comment = '';
   let pendingBreak = false; // innings ended on the last ball
+  let shown = null;         // match state as it was before the ball being animated
+  let resumeAuto = false;   // auto-play was on when the innings ended
 
   function newMatch() {
     m = CC.Match.create({
@@ -69,6 +71,10 @@
 
   function bowl() {
     if (anim || state !== 'play') return;
+    // Remember the state before this ball so the scoreboard only changes
+    // once the ball reaches the batter.
+    m.autoChoices();
+    shown = { inn: structuredClone(m.current()), field: m.field, aggression: m.aggression };
     const ev = m.bowlBall();
     if (!ev) return;
     anim = { t: 0, ev };
@@ -79,6 +85,7 @@
     anim = null;
     wait = AUTO_PAUSE;
     if (ev.endOfInnings) {
+      resumeAuto = auto;
       auto = false;
       if (m.result) { state = 'result'; comment = m.result.text; return; }
       state = 'break';
@@ -109,10 +116,10 @@
     draw(ctx) {
       ctx.fillStyle = P.greyDark;
       ctx.fillRect(0, 0, 320, 256);
-      const inn = m.current();
+      const v = view();
 
-      ui.bar(ctx, 2, 2, 156, 'SCORE:', inn ? m.battingTeam().name + ' ' + inn.runs + '-' + inn.wkts : '');
-      ui.bar(ctx, 162, 2, 156, 'BATSMAN:', inn ? m.battingTeam().players[inn.striker].name : '');
+      ui.bar(ctx, 2, 2, 156, 'SCORE:', v ? v.batTeam.name + ' ' + v.inn.runs + '-' + v.inn.wkts : '');
+      ui.bar(ctx, 162, 2, 156, 'BATSMAN:', v ? v.batTeam.players[v.inn.striker].name : '');
 
       drawOverview(ctx, 2, 16, 156, 190);
       drawPitchView(ctx, 162, 16, 156, 190);
@@ -160,7 +167,7 @@
     }
     if (state === 'break') {
       b.push(ui.button(60, 150, 96, 'SCORECARD', 's', () => CC.engine.go('scorecard', { innings: 0 })));
-      b.push(ui.button(164, 150, 96, 'CONTINUE', 'Enter', () => { comment = 'SECOND INNINGS'; startPlay(); }));
+      b.push(ui.button(164, 150, 96, 'CONTINUE', 'Enter', () => { comment = 'SECOND INNINGS'; auto = resumeAuto; wait = 0; startPlay(); }));
       return b;
     }
     if (state === 'result') {
@@ -185,17 +192,35 @@
   }
 
   function short(s) { return s === 'NORMAL' ? 'NORM' : s === 'ATTACK' ? 'ATT' : 'DEF'; }
+  // What the screen shows: the state before the current ball until it reaches
+  // the batter, and the live state otherwise.
+  function view() {
+    const live = !(anim && anim.t < BALL_TIME && shown);
+    let inn = live ? m.current() : shown.inn;
+    // Keep showing a finished innings until its last ball has played out.
+    if (live && anim && anim.ev.endOfInnings) inn = m.innings[anim.ev.innings];
+    if (!inn) return null;
+    return {
+      inn,
+      batTeam: m.teams[inn.battingSide],
+      bowlTeam: m.teams[inn.bowlingSide],
+      field: live ? m.field : shown.field,
+      aggression: live ? m.aggression : shown.aggression,
+    };
+  }
+
   function pad(s, n) { s = String(s); return s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length); }
 
   // ------------------------------------------------------------- main view
 
   function drawStatus(ctx) {
-    const inn = m.current();
-    if (!inn) return;
-    let s = 'OVERS ' + m.oversText() + '/' + m.overs + '  RR ' + m.runRate().toFixed(2);
+    const v = view();
+    if (!v) return;
+    const inn = v.inn;
+    let s = 'OVERS ' + m.oversText(inn) + '/' + m.overs + '  RR ' + m.runRate(inn).toFixed(2);
     if (inn.target) {
       const need = Math.max(0, inn.target - inn.runs);
-      s += '  NEED ' + need + ' OFF ' + m.ballsLeft();
+      s += '  NEED ' + need + ' OFF ' + (m.overs * m.ballsPerOver - inn.balls);
     }
     F.drawText(ctx, s, 160, 243, { align: 'center', color: P.cream });
   }
@@ -207,11 +232,11 @@
     const cx = x + w / 2, cy = y + 92, r = 66;
     CC.sprites.draw(ctx, 'ground', null, cx - 66, cy - 66);
 
-    const inn = m.current();
-    if (inn) {
+    const v = view();
+    if (v) {
       // Fielders in the bowling side's colour.
-      ctx.fillStyle = m.bowlingTeam().colour || P.white;
-      FIELD_POSITIONS[m.field].forEach(([fx, fy]) => {
+      ctx.fillStyle = v.bowlTeam.colour || P.white;
+      FIELD_POSITIONS[v.field].forEach(([fx, fy]) => {
         ctx.fillRect(Math.round(cx + fx * r) - 1, Math.round(cy + fy * r) - 1, 3, 3);
       });
       // Batters.
@@ -235,9 +260,9 @@
       ctx.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 2, 2);
     }
 
-    if (inn) {
-      F.drawText(ctx, 'FIELD: ' + m.field, x + 4, y + h - 21, { color: P.cream });
-      F.drawText(ctx, 'BATS:  ' + m.aggression, x + 4, y + h - 11, { color: P.cream });
+    if (v) {
+      F.drawText(ctx, 'FIELD: ' + v.field, x + 4, y + h - 21, { color: P.cream });
+      F.drawText(ctx, 'BATS:  ' + v.aggression, x + 4, y + h - 11, { color: P.cream });
     }
   }
 
@@ -260,9 +285,9 @@
     ui.panel(ctx, x, y, w, h, P.grass);
     CC.sprites.draw(ctx, 'pitch', null, x + 1, y + 1);
 
-    const inn = m.current();
-    if (!inn) return;
-    const batTeam = m.battingTeam(), bowlTeam = m.bowlingTeam();
+    const v = view();
+    if (!v) return;
+    const inn = v.inn, batTeam = v.batTeam, bowlTeam = v.bowlTeam;
     const bat = { tint: batTeam.colour }, bowl = { tint: bowlTeam.colour };
     const t = anim ? anim.t : 0;
     const ev = anim && anim.ev;
