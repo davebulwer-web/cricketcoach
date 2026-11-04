@@ -6,7 +6,9 @@ A browser-based, pixel-art cricket captaincy game inspired by the classic 16-bit
 
 ## Playing
 
-Open `index.html` in any modern browser. There is no build step and nothing to install.
+Play online at https://davebulwer-web.github.io/cricketcoach/ (GitHub Pages, deployed from `main`),
+or open `index.html` in any modern browser. There is no build step and nothing to install.
+On a phone it works best turned sideways.
 Keyboard: Enter to continue, Escape to go back. Mouse and touch work on every button.
 
 In a match you captain Ashby Vale against the computer:
@@ -37,10 +39,11 @@ In a match you captain Ashby Vale against the computer:
 1. Repo and game skeleton (done)
 2. Ball-by-ball match engine with captain choices: bowler, field setting, batting aggression (done)
 3. Match screens and replaceable placeholder sprite sheets (done)
-4. Play-test, tune scoring and publish on GitHub Pages
+4. Play-test, tune scoring and publish on GitHub Pages (done)
 
 ## Tests
 
 Run `node tests/sim.test.js` (Node 18 or later). It plays 2000 computer-vs-computer
 matches and checks that runs, wickets, balls and bowling figures all add up, and
-prints average scores so the balance can be tuned.
+prints average scores so the balance can be tuned. GitHub Actions runs it on every
+pull request.
