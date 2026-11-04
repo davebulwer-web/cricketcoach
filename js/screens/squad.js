@@ -11,6 +11,33 @@
   let sel = 0;
   let msg = '';
   let confirmRelease = null;   // player id waiting for a second press of RELEASE
+  let view = 0;                // 0: contracts, then season figures for each competition
+  const VIEWS = [null, 'CC', 'T20', 'OD'];
+
+  // Season figures in place of the contract columns.
+  function drawStatsHeader(ctx, y) {
+    const head = (t, x) => F.drawText(ctx, t, x, y, { color: P.cream, align: 'right' });
+    F.drawText(ctx, 'PLAYER', 4, y, { color: P.cream });
+    head('AGE', 92); head('M', 112); head('RUNS', 140); head('HS', 162); head('AVG', 192);
+    head('WKTS', 220); head('AVG', 250); head('ECON', 282);
+    F.drawText(ctx, 'XI', 290, y, { color: P.cream });
+    ctx.fillStyle = P.cream;
+    ctx.fillRect(4, y + 8, 312, 1);
+  }
+  function drawStatsRow(ctx, p, y, comp, opts) {
+    const col = opts.dim ? P.greyLite : P.white;
+    if (opts.selected) { ctx.fillStyle = P.blue; ctx.fillRect(2, y - 1, 316, ROW); }
+    else if (opts.stripe) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(2, y - 1, 316, ROW); }
+    const s = (p.stats && p.stats[comp]) || { m: 0, inns: 0, no: 0, runs: 0, hs: 0, balls: 0, wkts: 0, conc: 0 };
+    const out = s.inns - s.no;
+    const cell = (v, x) => F.drawText(ctx, String(v), x, y, { color: col, align: 'right' });
+    F.drawText(ctx, p.name, 4, y, { color: col });
+    cell(p.age, 92); cell(s.m, 112); cell(s.runs, 140); cell(s.hs, 162);
+    cell(out ? (s.runs / out).toFixed(1) : '-', 192);
+    cell(s.wkts, 220); cell(s.wkts ? (s.conc / s.wkts).toFixed(1) : '-', 250);
+    cell(s.balls ? (s.conc * 6 / s.balls).toFixed(1) : '-', 282);
+    if (opts.star) F.drawText(ctx, '*', 293, y, { color: P.yellow });
+  }
 
   // Column headings and one player row, shared with the transfer market.
   function drawHeader(ctx, y, lastCols) {
@@ -65,6 +92,7 @@
       sel = 0;
       msg = '';
       confirmRelease = null;
+      view = 0;
       const ui = CC.ui;
       if (preview) {
         this.buttons = [
@@ -78,21 +106,22 @@
         return;
       }
       this.buttons = [
-        ui.button(2, 241, 50, 'PICK', 'x', () => act(p => {
+        ui.button(2, 241, 44, 'PICK', 'x', () => act(p => {
           confirmRelease = null;
           const e = CC.Career.toggleXI(p.id);
           return e || (CC.Career.club().selection.indexOf(p.id) >= 0 ? p.name + ' IS IN THE XI' : p.name + ' LEFT OUT');
         })),
-        ui.button(54, 241, 50, 'AUTO XI', 'a', () => { CC.Career.autoXI(); msg = 'XI WILL BE PICKED AUTOMATICALLY'; }),
-        ui.button(106, 241, 50, 'RENEW', 'r', () => act(p => { const e = CC.Career.renew(p.id); return e || p.name + ' SIGNS A NEW CONTRACT'; })),
-        ui.button(158, 241, 50, 'RELEASE', 'd', () => act(p => {
+        ui.button(47, 241, 44, 'AUTO XI', 'a', () => { CC.Career.autoXI(); msg = 'XI WILL BE PICKED AUTOMATICALLY'; }),
+        ui.button(92, 241, 44, 'RENEW', 'r', () => act(p => { const e = CC.Career.renew(p.id); return e || p.name + ' SIGNS A NEW CONTRACT'; })),
+        ui.button(137, 241, 44, 'RELEASE', 'd', () => act(p => {
           if (confirmRelease !== p.id) { confirmRelease = p.id; return 'PRESS RELEASE AGAIN TO RELEASE ' + p.name; }
           confirmRelease = null;
           const e = CC.Career.release(p.id);
           return e || p.name + ' RELEASED. WAGES COUNT TO SEASON END';
         })),
-        ui.button(210, 241, 50, 'MARKET', 'm', () => CC.engine.go('market')),
-        ui.button(262, 241, 56, 'BACK', 'Escape', () => CC.engine.go('office')),
+        ui.button(182, 241, 44, 'STATS', 'v', () => { view = (view + 1) % VIEWS.length; msg = ''; }),
+        ui.button(227, 241, 44, 'MARKET', 'm', () => CC.engine.go('market')),
+        ui.button(272, 241, 46, 'BACK', 'Escape', () => CC.engine.go('office')),
       ];
     },
 
@@ -117,15 +146,17 @@
       ctx.fillStyle = c.colour;
       ctx.fillRect(4, 2, 4, 7);
       F.drawText(ctx, c.fullName + ' SQUAD', 12, 2, { color: P.yellow, shadow: P.black });
-      F.drawText(ctx, 'SEASON ' + CC.Career.state.season, 316, 2, { align: 'right', color: P.cream });
-      drawHeader(ctx, 13, ['CON', 'WAGE', 'XI']);
+      const comp = VIEWS[view];
+      F.drawText(ctx, comp ? CC.Season.COMPS[comp].name : 'SEASON ' + CC.Career.state.season, 316, 2, { align: 'right', color: P.cream });
+      if (comp) drawStatsHeader(ctx, 13); else drawHeader(ctx, 13, ['CON', 'WAGE', 'XI']);
 
       const mine = !preview && clubId === CC.Career.state.countyId;
       // Your own picks while you are choosing (even an incomplete XI), otherwise the XI that will play.
       const picked = mine && club.selection ? club.selection : (mine ? CC.Career.currentXI() : CC.Squads.pickXI(club.players)).map(p => p.id);
       club.players.forEach((p, i) => {
         const inXI = picked.indexOf(p.id) >= 0;
-        drawRow(ctx, p, TOP + i * ROW, { dim: !inXI, star: inXI, stripe: i % 2, selected: mine && i === sel });
+        const opts = { dim: !inXI, star: inXI, stripe: i % 2, selected: mine && i === sel };
+        if (comp) drawStatsRow(ctx, p, TOP + i * ROW, comp, opts); else drawRow(ctx, p, TOP + i * ROW, opts);
       });
 
       const info = 'SQUAD ' + club.players.length + '/' + R.squadMax +

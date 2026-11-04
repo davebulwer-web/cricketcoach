@@ -4,10 +4,7 @@
   const P = CC.pal;
   const F = CC.font;
 
-  function ordinal(n) {
-    if (n % 100 >= 11 && n % 100 <= 13) return n + 'TH';
-    return n + ({ 1: 'ST', 2: 'ND', 3: 'RD' }[n % 10] || 'TH');
-  }
+  const ordinal = n => CC.ordinal(n);
 
   CC.engine.register('office', {
     enter() {
@@ -25,6 +22,8 @@
       b.push(ui.button(92, 186, 64, 'FIXTURES', 'f', () => CC.engine.go('fixtures', {})));
       b.push(ui.button(164, 186, 64, 'SQUAD', 's', () => CC.engine.go('squad', {})));
       b.push(ui.button(236, 186, 64, 'MARKET', 'k', () => CC.engine.go('market')));
+      const unread = CC.Career.unreadNews();
+      b.push(ui.button(20, 238, 130, unread ? 'NEWS (' + unread + ' NEW)' : 'NEWS', 'n', () => CC.engine.go('news')));
       b.push(ui.button(170, 238, 130, 'SAVE AND EXIT', 'Escape', () => { CC.Career.save(); CC.game.mode = null; CC.engine.go('title'); }));
       this.buttons = b;
     },
@@ -83,5 +82,4 @@
     },
   });
 
-  CC.ordinal = ordinal;
 })();

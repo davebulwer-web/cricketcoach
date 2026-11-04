@@ -3,6 +3,7 @@
   const P = CC.pal;
   const F = CC.font;
   let t = 0;
+  let saveStatus = 'none';
 
   CC.engine.register('title', {
     enter() {
@@ -10,7 +11,8 @@
       const cont = CC.ui.button(100, 136, 120, 'CONTINUE CAREER', 'c', () => {
         if (CC.Career.load()) { CC.game.mode = 'career'; CC.engine.go('office'); }
       });
-      cont.disabled = !CC.Career.hasSave();
+      saveStatus = CC.Career.saveStatus();
+      cont.disabled = saveStatus !== 'ok';
       this.buttons = [
         CC.ui.button(100, 120, 120, 'NEW CAREER', 'Enter', () => { CC.Career.begin(); CC.engine.go('county'); }),
         cont,
@@ -44,6 +46,12 @@
         F.drawText(ctx, 'CHOOSE AN OPTION', 160, 100, { align: 'center', color: P.white });
       }
       F.drawText(ctx, 'ALL PLAYERS ARE FICTIONAL', 160, 245, { align: 'center', color: P.cream });
+      if (saveStatus === 'old') {
+        ctx.fillStyle = P.navy;
+        ctx.fillRect(0, 92, 320, 22);
+        F.drawText(ctx, 'YOUR SAVED CAREER IS FROM AN OLDER VERSION', 160, 94, { align: 'center', color: P.orange });
+        F.drawText(ctx, 'AND CAN\'T BE CONTINUED. PLEASE START A NEW ONE.', 160, 104, { align: 'center', color: P.orange });
+      }
     },
   });
 

@@ -196,8 +196,8 @@
     const news = { retired: [], left: [], youth: [], kept: [] };
     const mine = state.countyId;
 
-    // Free agents age too; old ones retire.
-    state.freeAgents.forEach(p => develop(p, rng));
+    // Free agents age too; old ones retire. Season figures start again.
+    state.freeAgents.forEach(p => { develop(p, rng); p.stats = {}; });
     state.freeAgents = state.freeAgents.filter(p => !retires(p, rng));
 
     CC.counties.forEach(county => {
@@ -206,6 +206,7 @@
       const stay = [], expiring = [];
       c.players.forEach(p => {
         develop(p, rng);
+        p.stats = {};
         if (retires(p, rng)) { if (isMine) news.retired.push(p.name); return; }
         p.contract -= 1;
         if (p.contract <= 0) expiring.push(p); else stay.push(p);

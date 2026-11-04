@@ -29,7 +29,7 @@
   const BASE = {
     T20:  { dot: 0.35, 1: 0.35, 2: 0.08, 3: 0.012, 4: 0.115, 6: 0.04, W: 0.04, wide: 0.03, nb: 0.006 },
     OD50: { dot: 0.44, 1: 0.34, 2: 0.075, 3: 0.012, 4: 0.085, 6: 0.022, W: 0.022, wide: 0.022, nb: 0.004 },
-    FC:   { dot: 0.66, 1: 0.2, 2: 0.05, 3: 0.012, 4: 0.062, 6: 0.004, W: 0.0115, wide: 0.006, nb: 0.006 },
+    FC:   { dot: 0.67, 1: 0.19, 2: 0.048, 3: 0.012, 4: 0.056, 6: 0.004, W: 0.0115, wide: 0.006, nb: 0.006 },
   };
 
   const FORMATS = {
@@ -298,7 +298,7 @@
         if (limited) {
           if (oversDone < overs - 4 && used >= maxOversPerBowler - 1) score -= 15; // save a death over
         } else {
-          score -= recentOvers(inn, i) * 3;                          // rest tired bowlers
+          score -= recentOvers(inn, i) * 6;                          // rest tired bowlers
           if (p.style === 'SPIN' && inn.balls < 20 * bpo) score -= 10; // seam with the new ball
         }
         if (score > bestScore) { bestScore = score; best = i; }

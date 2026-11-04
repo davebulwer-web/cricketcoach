@@ -200,6 +200,21 @@ Object.keys(koCount).forEach(comp => {
   assert.strictEqual(t.reduce((a, r) => a + r.w, 0), t.reduce((a, r) => a + r.l, 0), 'T20 wins = losses');
   t.forEach(r => assert.strictEqual(r.pts, r.w * 2 + r.t, 'T20 points'));
 });
+// Player figures: matches never exceed fixtures, and totals add up.
+let ccRuns = 0, ccResultRuns = 0;
+ids.forEach(id => CC.Career.club(id).players.forEach(p => {
+  const s = p.stats || {};
+  if (s.CC) { assert(s.CC.m <= 14 && s.CC.inns <= s.CC.m * 2 && s.CC.no <= s.CC.inns, 'championship figures'); ccRuns += s.CC.runs; }
+  if (s.T20) assert(s.T20.m <= 19 && s.T20.balls <= s.T20.m * 24, 'T20 figures');
+}));
+sched.events.filter(e => e.comp === 'CC').forEach(e => e.fixtures.forEach(f => f.result.innings.forEach(i => { ccResultRuns += i.runs; })));
+assert(ccRuns > ccResultRuns * 0.9 && ccRuns <= ccResultRuns, 'batting figures account for the runs, less extras');
+const lead = CC.Season.leaders(CC.Career.state.clubs, 'CC', 3);
+assert(lead.runs.length === 3 && lead.runs[0].s.runs >= lead.runs[1].s.runs, 'leaders sorted');
+assert(CC.Career.state.inbox.length > 10, 'news items for the season');
+assert(CC.Career.state.inbox.some(n => /^CHAMP: (BEAT|LOST TO|DREW WITH|TIED WITH)/.test(n.text)), 'result news');
+console.log('leading championship run scorer', lead.runs[0].p.name, lead.runs[0].s.runs, '- wicket taker', lead.wkts[0].p.name, lead.wkts[0].s.wkts);
+
 const summary = CC.Season.summary(sched);
 const nextDivs = CC.Season.nextDivisions(sched);
 assert.strictEqual(nextDivs[1].length, 10, 'ten in Division 1');
@@ -211,6 +226,8 @@ CC.Career.startNextSeason();
 assert.strictEqual(CC.Career.state.season, 2028, 'next season');
 assert.strictEqual(JSON.stringify(CC.Career.state.schedule.divisions), JSON.stringify(nextDivs), 'new season uses the new divisions');
 assert.strictEqual(CC.Career.state.history.length, 1, 'season recorded in history');
+assert(CC.Career.state.history[0].leaders.CC.runs.value > 0, 'season leaders kept in history');
+ids.forEach(id => CC.Career.club(id).players.forEach(p => assert(!p.stats || !p.stats.CC, 'figures reset for the new season')));
 // --- Squad rules -------------------------------------------------------------
 
 const st = CC.Career.state;
