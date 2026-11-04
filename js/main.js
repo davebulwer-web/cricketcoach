@@ -3,26 +3,27 @@ CC.game = {
   mode: null,    // 'career' or 'quick'
   home: null,    // the player's side for the current match
   away: null,    // the computer's side
+  format: 'T20', // 'T20', 'OD50' or 'FC' (see CC.Match.FORMATS)
   match: null,
 
   // A one-off match between two random counties.
-  quickMatch() {
+  quickMatch(format) {
     const [home, away] = CC.Career.quickMatchTeams();
-    Object.assign(this, { mode: 'quick', home, away });
+    Object.assign(this, { mode: 'quick', home, away, format: format || this.format });
     CC.engine.go('teamsheet');
   },
 
   // A friendly for your county against a random other county.
-  friendly() {
+  friendly(format) {
     const mine = CC.Career.state.countyId;
     const others = CC.counties.filter(c => c.id !== mine);
     const opp = others[Math.floor(Math.random() * others.length)];
-    Object.assign(this, { mode: 'career', home: CC.Career.team(mine), away: CC.Career.team(opp.id) });
+    Object.assign(this, { mode: 'career', home: CC.Career.team(mine), away: CC.Career.team(opp.id), format: format || this.format });
     CC.engine.go('teamsheet');
   },
 
   // Where to go when a match is finished or abandoned.
-  afterMatch() { if (this.mode === 'career') CC.engine.go('office'); else this.quickMatch(); },
+  afterMatch() { if (this.mode === 'career') CC.engine.go('office'); else CC.engine.go('format', { mode: 'quick' }); },
   exit() { CC.engine.go(this.mode === 'career' ? 'office' : 'title'); },
 };
 

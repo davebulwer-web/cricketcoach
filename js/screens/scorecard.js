@@ -15,7 +15,7 @@
       const m = CC.game.match;
       this.buttons = [CC.ui.button(214, 241, 100, 'RETURN', 'r', () => CC.engine.go('match'))];
       if (m.innings.length > 1) {
-        this.buttons.push(CC.ui.button(6, 241, 120, shown ? '1ST INNINGS' : '2ND INNINGS', 'i', () => { shown = 1 - shown; }));
+        this.buttons.push(CC.ui.button(6, 241, 120, 'NEXT INNINGS', 'i', () => { shown = (shown + 1) % m.innings.length; }));
       }
     },
 
@@ -31,7 +31,9 @@
       const bat = m.teams[inn.battingSide], bowl = m.teams[inn.bowlingSide];
 
       F.drawText(ctx, bat.name, 4, 3, { color: P.yellow, shadow: P.black });
-      F.drawText(ctx, (shown ? '2ND' : '1ST') + ' INNINGS', 316, 3, { align: 'right', color: P.yellow, shadow: P.black });
+      const nth = m.innings.slice(0, shown + 1).filter(x => x.battingSide === inn.battingSide).length;
+      const label = m.limited ? (shown ? '2ND' : '1ST') + ' INNINGS' : (nth === 1 ? '1ST' : '2ND') + ' INNINGS (' + (shown + 1) + ' OF ' + m.innings.length + ')';
+      F.drawText(ctx, label, 316, 3, { align: 'right', color: P.yellow, shadow: P.black });
 
       let y = 14;
       bat.players.forEach((p, i) => {
@@ -40,7 +42,7 @@
         if (b.batted) {
           const status = b.out ? CC.Match.howOut(b.out) : 'NOT OUT';
           F.drawText(ctx, status, 78, y, { color: P.white });
-          F.drawText(ctx, String(b.runs), 288, y, { align: 'right', color: P.white });
+          F.drawText(ctx, String(b.runs), 280, y, { align: 'right', color: P.white });
           F.drawText(ctx, '(' + b.balls + ')', 316, y, { align: 'right', color: P.greyLite });
         }
         y += 8;
@@ -49,10 +51,10 @@
       y += 2;
       const ex = inn.extras;
       F.drawText(ctx, 'EXTRAS  (W ' + ex.wides + ', NB ' + ex.noballs + ')', 4, y, { color: P.cream });
-      F.drawText(ctx, String(ex.wides + ex.noballs + ex.byes), 288, y, { align: 'right' });
+      F.drawText(ctx, String(ex.wides + ex.noballs + ex.byes), 280, y, { align: 'right' });
       y += 10;
-      F.drawText(ctx, 'TOTAL  (' + inn.wkts + ' WKTS, ' + m.oversText(inn) + ' OVERS)', 4, y, { color: P.yellow });
-      F.drawText(ctx, String(inn.runs), 288, y, { align: 'right', color: P.yellow });
+      F.drawText(ctx, 'TOTAL  (' + inn.wkts + ' WKTS' + (inn.declared ? ' DEC' : '') + ', ' + m.oversText(inn) + ' OVERS)', 4, y, { color: P.yellow });
+      F.drawText(ctx, String(inn.runs), 280, y, { align: 'right', color: P.yellow });
       y += 12;
 
       // Fall of wickets, wrapped over as many lines as needed.

@@ -1,10 +1,12 @@
-// Match screen: runs a single limited-overs match using CC.Match.
+// Match screen: runs a T20, 50-over or four-day match using CC.Match.
+// CC.game.format picks the format.
 //
 // States:
 //   toss    - who won the toss, and the bat/bowl choice
 //   bowler  - the human picks a bowler for the next over
 //   play    - balls are bowled one at a time (or automatically)
-//   break   - innings break
+//   sim     - menu to simulate ahead (and, in four-day games, declare)
+//   break   - between innings (and the follow-on decision)
 //   result  - match over
 (function () {
   const P = CC.pal;
@@ -37,12 +39,16 @@
   let pendingBreak = false; // innings ended on the last ball
   let shown = null;         // match state as it was before the ball being animated
   let resumeAuto = false;   // auto-play was on when the innings ended
+  let lastDay = 1;          // four-day games: to announce the close of play
 
   function newMatch() {
+    const format = CC.game.format || 'T20';
     m = CC.Match.create({
-      home: CC.game.home, away: CC.game.away,
-      overs: CC.config.oversPerInnings, ballsPerOver: CC.config.ballsPerOver, humanSide: 0,
+      home: CC.game.home, away: CC.game.away, format,
+      overs: format === 'T20' ? CC.config.oversPerInnings : undefined,
+      ballsPerOver: CC.config.ballsPerOver, humanSide: 0,
     });
+    lastDay = 1;
     CC.game.match = m;
     m.doToss();
     state = 'toss';
@@ -50,6 +56,7 @@
     anim = null;
     pendingBreak = false;
     comment = m.teams[m.tossWinner].name + ' WIN THE TOSS';
+    if (!m.limited && m.rainOvers[0]) comment = 'RAIN DELAY: ' + m.rainOvers[0] + ' OVERS LOST TODAY';
     if (m.tossWinner !== m.humanSide) {
       const bat = m.chooseToss();
       comment += ' AND ' + (bat === m.tossWinner ? 'BAT' : 'BOWL');
@@ -87,11 +94,55 @@
     if (ev.endOfInnings) {
       resumeAuto = auto;
       auto = false;
-      if (m.result) { state = 'result'; comment = m.result.text; return; }
-      state = 'break';
+      afterInnings();
       return;
     }
     if (ev.endOfOver) comment = 'END OF OVER ' + (ev.over + 1) + '. ' + ev.text;
+    newDayComment();
+    checkBowler();
+  }
+
+  function afterInnings() {
+    if (m.result) { state = 'result'; auto = false; comment = m.result.text; return; }
+    state = 'break';
+  }
+
+  // Four-day games: announce stumps and any rain when the day changes.
+  function newDayComment() {
+    const c = m.clock();
+    if (!c || c.day === lastDay) return;
+    lastDay = c.day;
+    comment = 'STUMPS. DAY ' + c.day + (c.rain ? ': RAIN COSTS ' + c.rain + ' OVERS' : ' BEGINS');
+  }
+
+  // Let the computer play both sides up to a point, then hand back control.
+  function simulate(until) {
+    const startInn = m.cur;
+    const c0 = m.clock();
+    let balls = 0;
+    const changed = mm => mm.cur !== startInn || mm.pendingFollowOn;
+    const stop = {
+      over: mm => changed(mm) || (balls > 0 && mm.needsBowler()),
+      session: mm => changed(mm) || (balls > 0 && (mm.clock().day !== c0.day || mm.clock().session !== c0.session)),
+      day: mm => balls > 0 && mm.clock().day !== c0.day,
+      innings: changed,
+      match: () => false,
+    }[until];
+    m.simulate(mm => { if (stop(mm)) return true; balls++; return false; }, { declare: until === 'match' });
+    anim = null;
+    auto = false;
+    if (m.result) { afterInnings(); return; }
+    const before = comment;
+    newDayComment();
+    if (m.cur !== startInn || m.pendingFollowOn) {
+      state = 'break';
+      return;
+    }
+    if (comment === before) {
+      const c = m.clock();
+      comment = c ? 'PLAY RESUMES: DAY ' + c.day + ', SESSION ' + c.session : 'PLAY RESUMES AFTER ' + m.oversText() + ' OVERS';
+    }
+    state = 'play';
     checkBowler();
   }
 
@@ -131,6 +182,7 @@
       if (state === 'toss') drawToss(ctx);
       else if (state === 'bowler') drawBowlerPicker(ctx);
       else if (state === 'break') drawBreak(ctx);
+      else if (state === 'sim') box(ctx, 70, 26, 180, m.limited ? 106 : 160, 'SIMULATE');
       else if (state === 'result') drawResult(ctx);
     },
   });
@@ -156,7 +208,8 @@
       eligible.sort((a, c) => (team.players[c].style ? 1 : 0) - (team.players[a].style ? 1 : 0) || team.players[c].bowl - team.players[a].bowl);
       eligible.slice(0, 9).forEach((i, n) => {
         const p = team.players[i], s = inn.bowlers[i];
-        const label = (n + 1) + ' ' + pad(p.name, 12) + pad(p.style || '-', 5) + pad(String(p.bowl), 3) + ' ' + m.bowlerOvers(s) + '-' + s.maidens + '-' + s.runs + '-' + s.wkts;
+        const tired = !m.limited && m.recentOvers(i) >= 5 ? '!' : ' ';
+        const label = (n + 1) + ' ' + pad(p.name, 12) + pad(p.style || '-', 5) + pad(String(p.bowl), 3) + tired + m.bowlerOvers(s) + '-' + s.maidens + '-' + s.runs + '-' + s.wkts;
         const btn = ui.button(30, 44 + n * 14, 260, label, String(n + 1), () => { m.setBowler(i); state = 'play'; });
         btn.align = 'left';
         b.push(btn);
@@ -166,8 +219,27 @@
       return b;
     }
     if (state === 'break') {
-      b.push(ui.button(60, 150, 96, 'SCORECARD', 's', () => CC.engine.go('scorecard', { innings: 0 })));
-      b.push(ui.button(164, 150, 96, 'CONTINUE', 'Enter', () => { comment = 'SECOND INNINGS'; auto = resumeAuto; wait = 0; startPlay(); }));
+      const done = m.cur - (m.pendingFollowOn ? 0 : 1);
+      b.push(ui.button(36, 168, 76, 'SCORECARD', 's', () => CC.engine.go('scorecard', { innings: Math.max(0, done) })));
+      if (m.pendingFollowOn && m.isHuman(m.innings[0].battingSide)) {
+        b.push(ui.button(118, 168, 80, 'ENFORCE', 'e', () => { m.chooseFollowOn(true); }));
+        b.push(ui.button(204, 168, 80, 'BAT AGAIN', 'b', () => { m.chooseFollowOn(false); }));
+      } else {
+        b.push(ui.button(208, 168, 76, 'CONTINUE', 'Enter', () => { comment = inningsName(m.cur).toUpperCase(); auto = resumeAuto; wait = 0; startPlay(); }));
+      }
+      return b;
+    }
+    if (state === 'sim') {
+      const opts = m.limited
+        ? [['TO END OF OVER', 'over'], ['TO END OF INNINGS', 'innings'], ['TO END OF MATCH', 'match']]
+        : [['TO END OF OVER', 'over'], ['TO END OF SESSION', 'session'], ['TO CLOSE OF PLAY', 'day'], ['TO END OF INNINGS', 'innings'], ['TO END OF MATCH', 'match']];
+      opts.forEach(([label, until], i) => b.push(ui.button(90, 50 + i * 16, 140, label, String(i + 1), () => simulate(until))));
+      let y = 50 + opts.length * 16 + 6;
+      if (m.canDeclare() && m.humanBatting()) {
+        b.push(ui.button(90, y, 140, 'DECLARE INNINGS', 'd', () => { m.declare(); comment = m.battingTeam().name + ' DECLARE'; afterDeclare(); }));
+        y += 16;
+      }
+      b.push(ui.button(90, y + 4, 140, 'CANCEL', 'Escape', () => { state = 'play'; checkBowler(); }));
       return b;
     }
     if (state === 'result') {
@@ -177,21 +249,37 @@
     }
     // Normal play.
     const busy = !!anim;
-    const ball = ui.button(2, 224, 46, 'BALL', ' ', bowl);
+    const ball = ui.button(2, 224, 38, 'BALL', ' ', bowl);
     ball.disabled = busy || auto;
     b.push(ball);
-    b.push(ui.button(50, 224, 62, auto ? 'AUTO ON' : 'AUTO OFF', 'a', () => { auto = !auto; wait = 0; }));
+    b.push(ui.button(42, 224, 56, auto ? 'AUTO ON' : 'AUTO OFF', 'a', () => { auto = !auto; wait = 0; }));
     if (m.humanBowling()) {
-      b.push(ui.button(114, 224, 92, 'FIELD ' + short(m.field), 'f', () => m.setField(NEXT_SETTING[m.field])));
+      b.push(ui.button(100, 224, 76, 'FIELD ' + short(m.field), 'f', () => m.setField(NEXT_SETTING[m.field])));
     } else {
-      b.push(ui.button(114, 224, 92, 'BAT ' + short(m.aggression), 'f', () => m.setAggression(NEXT_SETTING[m.aggression])));
+      b.push(ui.button(100, 224, 76, 'BAT ' + short(m.aggression), 'f', () => m.setAggression(NEXT_SETTING[m.aggression])));
     }
-    b.push(ui.button(208, 224, 58, 'CARD', 's', () => { auto = false; CC.engine.go('scorecard'); }));
-    b.push(ui.button(268, 224, 50, 'QUIT', 'Escape', () => { auto = false; CC.game.exit(); }));
+    const sim = ui.button(178, 224, 36, 'SIM', 'm', () => { auto = false; state = 'sim'; });
+    sim.disabled = busy;
+    b.push(sim);
+    b.push(ui.button(216, 224, 46, 'CARD', 's', () => { auto = false; CC.engine.go('scorecard'); }));
+    b.push(ui.button(264, 224, 54, 'QUIT', 'Escape', () => { auto = false; CC.game.exit(); }));
     return b;
   }
 
   function short(s) { return s === 'NORMAL' ? 'NORM' : s === 'ATTACK' ? 'ATT' : 'DEF'; }
+
+  function afterDeclare() {
+    resumeAuto = false;
+    afterInnings();
+  }
+
+  // "Surrey 2nd innings" style name for innings i.
+  function inningsName(i) {
+    const inn = m.innings[i];
+    if (!inn) return '';
+    const nth = m.innings.slice(0, i + 1).filter(x => x.battingSide === inn.battingSide).length;
+    return m.teams[inn.battingSide].name + ' ' + (nth === 1 ? '1ST' : '2ND') + ' INNINGS';
+  }
   // What the screen shows: the state before the current ball until it reaches
   // the batter, and the live state otherwise.
   function view() {
@@ -217,10 +305,24 @@
     const v = view();
     if (!v) return;
     const inn = v.inn;
-    let s = 'OVERS ' + m.oversText(inn) + '/' + m.overs + '  RR ' + m.runRate(inn).toFixed(2);
-    if (inn.target) {
-      const need = Math.max(0, inn.target - inn.runs);
-      s += '  NEED ' + need + ' OFF ' + (m.overs * m.ballsPerOver - inn.balls);
+    let s;
+    if (m.limited) {
+      s = 'OVERS ' + m.oversText(inn) + '/' + m.overs + '  RR ' + m.runRate(inn).toFixed(2);
+      if (inn.target) {
+        const need = Math.max(0, inn.target - inn.runs);
+        s += '  NEED ' + need + ' OFF ' + (m.overs * m.ballsPerOver - inn.balls);
+      }
+    } else {
+      const c = m.clock();
+      s = 'DAY ' + c.day + ' S' + c.session + '  OV ' + m.oversText(inn);
+      if (inn.target) {
+        s += '  NEED ' + Math.max(0, inn.target - inn.runs) + ', ' + Math.ceil(m.ballsLeft() / m.ballsPerOver) + ' OV LEFT';
+      } else if (m.cur > 0) {
+        const lead = m.totalFor(inn.battingSide) - m.totalFor(inn.bowlingSide);
+        s += lead >= 0 ? '  LEAD ' + lead : '  TRAIL ' + -lead;
+      } else {
+        s += '  RR ' + m.runRate(inn).toFixed(2);
+      }
     }
     F.drawText(ctx, s, 160, 243, { align: 'center', color: P.cream });
   }
@@ -353,24 +455,46 @@
     const over = Math.floor(inn.balls / m.ballsPerOver) + 1;
     box(ctx, 24, 14, 272, 196, 'CHOOSE BOWLER FOR OVER ' + over);
     F.drawText(ctx, '  NAME        TYPE SKL O-M-R-W', 34, 33, { color: P.cream });
-    F.drawText(ctx, 'MAX ' + m.maxOversPerBowler + ' OVERS EACH, NOT TWO IN A ROW', 160, 178, { align: 'center', color: P.greyLite });
+    F.drawText(ctx, m.limited ? 'MAX ' + m.maxOversPerBowler + ' OVERS EACH, NOT TWO IN A ROW' : 'NOT TWO IN A ROW.  ! = TIRED', 160, 178, { align: 'center', color: P.greyLite });
+  }
+
+  function inningsLine(inn) {
+    return m.teams[inn.battingSide].name + ' ' + inn.runs + '-' + inn.wkts + (inn.declared ? ' DEC' : '') + ' (' + m.oversText(inn) + ' OV)';
   }
 
   function drawBreak(ctx) {
-    const first = m.innings[0];
-    box(ctx, 30, 70, 260, 100, 'INNINGS BREAK');
-    F.drawText(ctx, m.teams[first.battingSide].name + ' ' + first.runs + '-' + first.wkts + ' (' + m.oversText(first) + ' OV)', 160, 94, { align: 'center' });
-    F.drawText(ctx, m.teams[1 - first.battingSide].name + ' NEED ' + (first.runs + 1) + ' TO WIN', 160, 110, { align: 'center', color: P.cream });
-    F.drawText(ctx, 'FROM ' + m.overs + ' OVERS', 160, 122, { align: 'center', color: P.cream });
+    box(ctx, 30, 50, 260, 140, 'INNINGS BREAK');
+    const finished = m.innings.filter(i => i.done);
+    finished.forEach((inn, i) => F.drawText(ctx, inningsLine(inn), 160, 70 + i * 11, { align: 'center' }));
+    const y = 70 + finished.length * 11 + 8;
+    const line = (t, k) => F.drawText(ctx, t, 160, y + k * 11, { align: 'center', color: P.cream });
+    if (m.pendingFollowOn) {
+      const a = m.innings[0].battingSide;
+      line(m.teams[a].name + ' LEAD BY ' + (m.innings[0].runs - m.innings[1].runs), 0);
+      line(m.isHuman(a) ? 'ENFORCE THE FOLLOW-ON?' : 'DECIDING ON THE FOLLOW-ON', 1);
+      return;
+    }
+    const inn = m.current();
+    const bat = m.teams[inn.battingSide].name;
+    if (inn.target) {
+      line(bat + ' NEED ' + inn.target + ' TO WIN', 0);
+      line(m.limited ? 'FROM ' + m.overs + ' OVERS' : 'WITH ' + Math.ceil(m.ballsLeft() / m.ballsPerOver) + ' OVERS LEFT IN THE MATCH', 1);
+    } else {
+      if (m.followOn && m.cur === 2) line(bat + ' FOLLOW ON', 0);
+      const lead = m.totalFor(inn.battingSide) - m.totalFor(inn.bowlingSide);
+      line(bat + (lead >= 0 ? ' LEAD BY ' + lead : ' TRAIL BY ' + -lead), m.followOn && m.cur === 2 ? 1 : 0);
+    }
   }
 
   function drawResult(ctx) {
-    box(ctx, 20, 60, 280, 116, 'MATCH RESULT');
-    const won = m.result.winner === m.humanSide;
-    F.drawText(ctx, m.result.winner === null ? 'A TIE!' : won ? 'YOU WIN!' : 'YOU LOSE', 160, 80, { align: 'center', scale: 2, color: won ? P.yellow : P.white, shadow: P.black });
-    F.drawText(ctx, m.result.text, 160, 104, { align: 'center' });
+    box(ctx, 20, 40, 280, 140, 'MATCH RESULT');
+    const r = m.result;
+    const won = r.winner === m.humanSide;
+    const head = r.by === 'draw' ? 'DRAWN' : r.winner === null ? 'A TIE!' : won ? 'YOU WIN!' : 'YOU LOSE';
+    F.drawText(ctx, head, 160, 58, { align: 'center', scale: 2, color: won ? P.yellow : P.white, shadow: P.black });
+    F.drawText(ctx, r.text, 160, 80, { align: 'center' });
     m.innings.forEach((inn, i) => {
-      F.drawText(ctx, m.teams[inn.battingSide].name + ' ' + inn.runs + '-' + inn.wkts + ' (' + m.oversText(inn) + ')', 160, 118 + i * 10, { align: 'center', color: P.cream });
+      F.drawText(ctx, inningsLine(inn), 160, 96 + i * 11, { align: 'center', color: P.cream });
     });
   }
 })();
