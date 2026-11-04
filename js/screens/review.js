@@ -9,7 +9,7 @@
         CC.ui.button(8, 238, 70, 'BACK', 'Escape', () => CC.engine.go('office')),
         CC.ui.button(170, 238, 142, 'START ' + (CC.Career.state.season + 1) + ' SEASON', 'Enter', () => {
           CC.Career.startNextSeason();
-          CC.engine.go('office');
+          CC.engine.go('closeseason');
         }),
       ];
     },

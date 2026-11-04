@@ -37,6 +37,27 @@ one-day competitions) and your fixture list are a button away. Quitting a compet
 match part-way through lets the computer play out the rest. At the end of the season you
 get a review, then promotion and relegation are applied and the next season begins.
 
+### Your squad
+
+Simplified versions of the real county rules:
+
+- **Squad size:** at most 24 registered players, and you can't release below 16.
+- **Overseas players:** at most 3 registered, and at most 2 in any XI.
+- **Wages:** your wage bill must fit the club's budget. A released player's wage still
+  counts until the end of the season.
+- **Transfer windows:** you can sign free agents from the transfer market pre-season until
+  31 May, and again during July. Players ask for a wage and a contract length.
+- **Contracts:** a player in the last year of his contract can be offered a new one
+  (the Renew button). Anyone you don't renew leaves at the end of the season, unless your
+  squad would drop below 16, in which case your best ones stay on a one-year deal.
+- **Choosing the XI:** on the squad screen, pick a player (click or arrow keys) and press
+  Pick to put them in or out of the XI. Auto XI goes back to the computer's choice. If your
+  XI isn't a full eleven, the computer picks it for you.
+
+In the close season everyone gets a year older: young players improve towards their
+potential and older ones slowly decline. Players of 35 and over may retire, two academy
+players join each county, and the computer counties renew contracts and sign free agents.
+
 ### Match formats
 
 Matches come in three formats:
@@ -69,10 +90,11 @@ In a match you captain your side against the computer:
 | `js/data/names.js` | Pools of invented surnames used to generate players |
 | `js/career/squads.js` | Squad generation, county rules (squad size, overseas limit) and picking the best XI |
 | `js/career/season.js` | Fixtures, results, league tables, bonus points, knockouts, promotion and relegation |
+| `js/career/market.js` | Squad rules: choosing the XI, signing, releasing, contracts, transfer windows and the close season |
 | `js/career/career.js` | The career save: every county's squad, your club, the season, saving and loading |
 | `js/match/engine.js` | Ball-by-ball match simulation for T20, 50-over and four-day matches, and the computer captain (no drawing) |
 | `tests/sim.test.js` | Simulates thousands of matches and checks the scoring adds up |
-| `js/screens/` | Title, county choice, squad, club office, results, tables, fixtures, season review, format choice, team sheet, match and scorecard screens |
+| `js/screens/` | Title, county choice, squad, transfer market, club office, results, tables, fixtures, season review, close season, format choice, team sheet, match and scorecard screens |
 | `js/sprites.js` | Loads the art and draws sprites, tinting team colours |
 | `assets/` | Replaceable placeholder art. See `assets/README.md` for sizes and layouts |
 | `tools/make-placeholder-art.js` | Regenerates the placeholder PNGs |
@@ -89,7 +111,7 @@ County management mode:
 1. The 18 counties with invented squads, choosing your county, saved careers (done)
 2. 50-over and four-day match formats (done)
 3. A season with a two-division four-day championship, a T20 competition and a 50-over cup (done)
-4. Squad management: picking the XI, overseas limits, wage budget, contracts and signing windows
+4. Squad management: picking the XI, overseas limits, wage budget, contracts and signing windows (done)
 5. Polish: news, end-of-season review, balancing
 
 ## Tests
@@ -101,5 +123,7 @@ figures add up, that each format's rules hold (over limits, declarations, follow
 wins, draws only when time runs out), and that average scores and the share of draws stay in
 a realistic range. Finally it plays a whole season and checks every county has the right
 number of fixtures, the tables and points add up, the knockouts have winners, and promotion
-and relegation carry into the next season. It prints the averages so the balance can be tuned. GitHub Actions runs it on every
+and relegation carry into the next season. It then tests the squad rules (overseas,
+squad size, wages, windows, contracts, choosing the XI) and runs two more close seasons,
+checking squads stay legal and players age. It prints the averages so the balance can be tuned. GitHub Actions runs it on every
 pull request.

@@ -21,9 +21,10 @@
       } else {
         b.push(ui.button(90, 164, 140, 'CONTINUE', 'Enter', () => CC.game.simFixture()));
       }
-      b.push(ui.button(20, 186, 88, 'TABLES', 't', () => CC.engine.go('tables', {})));
-      b.push(ui.button(116, 186, 88, 'FIXTURES', 'f', () => CC.engine.go('fixtures', {})));
-      b.push(ui.button(212, 186, 88, 'SQUAD', 's', () => CC.engine.go('squad', {})));
+      b.push(ui.button(20, 186, 64, 'TABLES', 't', () => CC.engine.go('tables', {})));
+      b.push(ui.button(92, 186, 64, 'FIXTURES', 'f', () => CC.engine.go('fixtures', {})));
+      b.push(ui.button(164, 186, 64, 'SQUAD', 's', () => CC.engine.go('squad', {})));
+      b.push(ui.button(236, 186, 64, 'MARKET', 'k', () => CC.engine.go('market')));
       b.push(ui.button(170, 238, 130, 'SAVE AND EXIT', 'Escape', () => { CC.Career.save(); CC.game.mode = null; CC.engine.go('title'); }));
       this.buttons = b;
     },
@@ -69,6 +70,16 @@
       row('CHAMPIONSHIP DIVISION ' + st.div, ordinal(st.cc) + '  ' + pts('CC', st.div) + ' PTS', 0);
       row('T20 ' + c.group + ' GROUP', ordinal(st.t20) + '  ' + pts('T20', c.group) + ' PTS', 1);
       row('50 CUP ' + c.group + ' GROUP', ordinal(st.od) + '  ' + pts('OD', c.group) + ' PTS', 2);
+
+      // Squad notes.
+      const w = CC.Career.transferWindow();
+      F.drawText(ctx, 'TRANSFER WINDOW ' + w.text, 20, 208, { color: w.open ? P.yellow : P.greyLite });
+      const warn = CC.Market.xiWarnings(CC.Career.state);
+      const club = CC.Career.club();
+      const xiText = warn.length ? 'XI: ' + warn[0] : 'XI: ' + (club.selection ? 'CHOSEN BY YOU' : 'PICKED AUTOMATICALLY');
+      F.drawText(ctx, xiText, 20, 218, { color: warn.length ? P.orange : P.greyLite });
+      const ending = club.players.filter(p => p.contract === 1).length;
+      if (ending) F.drawText(ctx, ending + ' CONTRACTS END THIS SEASON', 20, 228, { color: P.greyLite });
     },
   });
 
